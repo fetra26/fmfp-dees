@@ -79,13 +79,22 @@ apt install -y php8.2-imagick || warn "php8.2-imagick indisponible — ignoré (
 log "Vérification des extensions PHP requises..."
 REQUISES=(pdo_mysql redis mbstring xml gd zip curl bcmath intl tokenizer fileinfo openssl)
 MANQUANTES=""
+# On lit la liste des modules UNE seule fois, puis on cherche en pur bash.
+# Surtout pas « php -m | grep -q » : grep -q sort au premier résultat et ferme
+# le tuyau, php reçoit un SIGPIPE et sort en 141 ; sous set -o pipefail c'est
+# ce 141 qui devient le code du pipeline, et TOUTES les extensions sont
+# déclarées manquantes alors qu'elles sont présentes.
+MODULES=$'\n'"$(php -m)"$'\n'
+MODULES="${MODULES,,}"
 for ext in "${REQUISES[@]}"; do
-    php -m | grep -qix "$ext" || MANQUANTES="$MANQUANTES $ext"
+    [[ "$MODULES" == *$'\n'"${ext,,}"$'\n'* ]] || MANQUANTES="$MANQUANTES $ext"
 done
-php -m | grep -qi "opcache" || MANQUANTES="$MANQUANTES opcache"
+# OPcache s'affiche « Zend OPcache » : recherche en sous-chaîne, pas ligne entière.
+[[ "$MODULES" == *opcache* ]] || MANQUANTES="$MANQUANTES opcache"
 if [[ -n "$MANQUANTES" ]]; then
     err "Extensions PHP manquantes :$MANQUANTES"
 fi
+
 log "Toutes les extensions requises sont chargées"
 
 # ─── 4. Composer ───
