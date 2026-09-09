@@ -7,7 +7,7 @@
 set -euo pipefail
 
 APP_DIR="/var/www/fmfp-dees"
-REPO_URL="${REPO_URL:-https://github.com/VOTRE-ORG/fmfp-dees.git}"
+REPO_URL="${REPO_URL:-git@github.com:fetra26/fmfp-dees.git}"
 
 GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
@@ -33,7 +33,20 @@ else
     log "Clonage du repo Git..."
     read -p "URL du repo Git (défaut: $REPO_URL) : " user_url
     REPO_URL="${user_url:-$REPO_URL}"
-    git clone "$REPO_URL" "$APP_DIR"
+
+    # Le dépôt est privé et la clé de déploiement appartient à www-data
+    # (cf. Phase 4.0 du DEPLOIEMENT.md). Cloner en root échouerait :
+    # root n'a pas cette clé. On prépare donc le dossier parent, puis on
+    # clone sous l'identité qui possède la clé — et qui fera les git pull.
+    mkdir -p "$(dirname "$APP_DIR")"
+    chown www-data:www-data "$(dirname "$APP_DIR")"
+
+    if ! sudo -u www-data git clone "$REPO_URL" "$APP_DIR"; then
+        err "Clonage impossible. Vérifiez la clé de déploiement :
+     sudo -u www-data ssh -T git@github.com
+   doit répondre « Hi fetra26/fmfp-dees! You've successfully authenticated ».
+   Voir la section 4.0 du DEPLOIEMENT.md."
+    fi
 fi
 
 cd "$APP_DIR"

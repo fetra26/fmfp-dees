@@ -44,16 +44,27 @@ Phase 6 : Utilisation quotidienne (updates)
 Ouvrez un terminal SSH sur le serveur :
 
 ```bash
-# Se placer dans le home
 cd ~
-
-# Télécharger le script d'installation
-wget https://raw.githubusercontent.com/VOTRE-ORG/fmfp-dees/main/scripts/deploiement/01-install-server.sh
-# OU si le code n'est pas encore sur Git : copier le script manuellement
-
-chmod +x 01-install-server.sh
-sudo ./01-install-server.sh
 ```
+
+Le dépôt `fetra26/fmfp-dees` est **privé**. Deux conséquences pratiques :
+
+- `wget https://raw.githubusercontent.com/...` **ne fonctionne pas** — ni pour un dépôt privé, ni depuis le réseau FMFP où `raw.githubusercontent.com` est bloqué (testé : HTTP 503, y compris sur des dépôts publics).
+- Le serveur doit donc s'authentifier auprès de GitHub. La méthode propre est une **clé de déploiement** en lecture seule, détaillée en Phase 4.1 — elle sert aussi aux mises à jour (`git pull`) de la Phase 6.
+
+**Pour ce tout premier script**, le plus simple est de le copier depuis votre poste, avant même que le serveur sache parler à GitHub :
+
+```powershell
+# Depuis PowerShell sur votre poste admin
+scp -r "e:\2026\IT\06.Local_Projects_Tools\fmfp-dees\scripts\deploiement" fmfp@<IP-DU-SERVEUR>:~/
+```
+
+Puis sur le serveur :
+
+```bash
+sudo bash ~/deploiement/01-install-server.sh
+```
+
 
 Ce script installe :
 - Nginx
@@ -141,6 +152,64 @@ sudo systemctl enable nginx php8.2-fpm mariadb redis-server
 
 ## 🚀 Phase 4 — Premier déploiement du code
 
+### 4.0 Autoriser le serveur à cloner le dépôt privé (clé de déploiement)
+
+`fetra26/fmfp-dees` est privé : le serveur ne peut pas le cloner tant qu'il ne
+s'est pas authentifié. La bonne méthode est une **clé de déploiement** — une clé
+SSH en lecture seule, valable pour ce seul dépôt. Elle est préférable à un jeton
+personnel : sa portée est limitée à un dépôt, elle n'expire pas, et sa
+révocation n'affecte aucun autre accès.
+
+La clé doit appartenir à `www-data`, puisque c'est ce compte qui exécutera
+`git pull` lors des mises à jour (Phase 6).
+
+```bash
+# 1. Donner un shell à www-data le temps de l'opération (sinon sudo -u échoue)
+sudo mkdir -p /var/www/.ssh
+sudo chown www-data:www-data /var/www/.ssh
+sudo chmod 700 /var/www/.ssh
+
+# 2. Générer la clé, sans passphrase (git pull doit tourner sans interaction)
+sudo -u www-data ssh-keygen -t ed25519 -f /var/www/.ssh/id_ed25519 -N "" -C "serveur-fmfp-dees"
+
+# 3. Afficher la clé PUBLIQUE
+sudo cat /var/www/.ssh/id_ed25519.pub
+```
+
+Copier la ligne affichée, puis sur GitHub :
+
+**Settings du dépôt** → **Deploy keys** → **Add deploy key**
+<https://github.com/fetra26/fmfp-dees/settings/keys>
+
+- **Title** : `serveur-fmfp-dees`
+- **Key** : coller la ligne
+- **Allow write access** : ⬜ **laisser décoché** — le serveur n'a jamais à écrire
+
+Vérifier que ça fonctionne :
+
+```bash
+sudo -u www-data ssh -o StrictHostKeyChecking=accept-new -T git@github.com
+# Réponse attendue :
+#   Hi fetra26/fmfp-dees! You've successfully authenticated,
+#   but GitHub does not provide shell access.
+```
+
+Ce message est un **succès** malgré sa formulation : GitHub confirme l'identité
+et rappelle simplement qu'il n'offre pas de shell.
+
+> **Réseau** : `raw.githubusercontent.com` est bloqué depuis le réseau FMFP
+> (HTTP 503, y compris sur des dépôts publics). Le clonage passe par
+> `git@github.com` en SSH sur le port 22, qui lui fonctionne. Si le port 22
+> sortant était lui aussi filtré, basculer sur le port 443 en ajoutant ceci
+> dans `/var/www/.ssh/config` :
+>
+> ```
+> Host github.com
+>     Hostname ssh.github.com
+>     Port 443
+>     User git
+> ```
+
 ### 4.1 Créer le dossier et cloner
 
 ```bash
@@ -148,11 +217,8 @@ sudo systemctl enable nginx php8.2-fpm mariadb redis-server
 sudo mkdir -p /var/www
 cd /var/www
 
-# Cloner le repo (remplacer par votre URL Git)
-sudo git clone https://github.com/VOTRE-ORG/fmfp-dees.git
-
-# Alternative : si Git privé avec token
-# sudo git clone https://TOKEN@github.com/VOTRE-ORG/fmfp-dees.git
+# Cloner le dépôt PRIVÉ via la clé de déploiement configurée ci-dessus
+sudo -u www-data git clone git@github.com:fetra26/fmfp-dees.git /var/www/fmfp-dees
 
 # Rendre l'utilisateur www-data propriétaire
 sudo chown -R www-data:www-data /var/www/fmfp-dees

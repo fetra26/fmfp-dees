@@ -44,7 +44,7 @@ EXIT;
 
 ```bash
 # 4. Cloner et déployer
-sudo git clone https://github.com/VOTRE-ORG/fmfp-dees.git /var/www/fmfp-dees
+sudo -u www-data git clone git@github.com:fetra26/fmfp-dees.git /var/www/fmfp-dees
 sudo bash /var/www/fmfp-dees/scripts/deploiement/deployer.sh
 ```
 
