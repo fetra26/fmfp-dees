@@ -1,0 +1,31 @@
+/*
+ * Corrections d'affichage pour les colonnes figées (sticky) de la table Données Projets.
+ *
+ * Objectif : les cellules figées à gauche restent bien visibles pendant le scroll horizontal
+ * sans écraser les cellules suivantes.
+ */
+
+/* Le conteneur de la table doit permettre le scroll horizontal */
+.fi-ta-content {
+    overflow-x: auto;
+    overflow-y: visible;
+}
+
+/* Les cellules figées ont besoin d'un fond opaque pour cacher les cellules non-figées
+   qui glissent en-dessous au scroll. */
+.fi-ta-cell[style*="position: sticky"],
+.fi-ta-header-cell[style*="position: sticky"] {
+    background-clip: padding-box;
+}
+
+/* La cellule ne doit pas hériter d'un fond transparent des lignes striped. */
+.fi-ta-row:nth-child(even) .fi-ta-cell[style*="position: sticky"] {
+    background: rgb(249 250 251) !important;
+}
+
+/* Empêcher le padding excessif de faire déborder le contenu des colonnes figées. */
+.fi-ta-cell[style*="position: sticky"] .fi-ta-text {
+    text-overflow: ellipsis;
+    overflow: hidden;
+    white-space: nowrap;
+}
