@@ -56,7 +56,8 @@ chmod -R 775 "$APP_DIR/storage" "$APP_DIR/bootstrap/cache"
 
 # ─── 4. Composer install ───
 log "Installation des dépendances PHP..."
-sudo -u www-data composer install --no-dev --optimize-autoloader --no-interaction
+mkdir -p /var/www/.composer && chown www-data:www-data /var/www/.composer
+sudo -u www-data env COMPOSER_HOME=/var/www/.composer composer install --no-dev --optimize-autoloader --no-interaction
 
 # ─── 5. Générer la clé si absente ───
 if ! grep -q "^APP_KEY=base64:" .env; then

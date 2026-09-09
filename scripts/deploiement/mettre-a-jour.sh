@@ -39,9 +39,9 @@ trap 'sudo -u www-data php artisan up 2>/dev/null || true' ERR
 log "Backup DB avant migration..."
 BACKUP_FILE="/var/backups/fmfp-dees/pre-update-$(date +%Y%m%d-%H%M%S).sql.gz"
 mkdir -p /var/backups/fmfp-dees
-DB_USER=$(grep "^DB_USERNAME=" .env | cut -d '=' -f2)
-DB_PASS=$(grep "^DB_PASSWORD=" .env | cut -d '=' -f2 | tr -d '"')
-DB_NAME=$(grep "^DB_DATABASE=" .env | cut -d '=' -f2)
+DB_USER=$(grep "^DB_USERNAME=" .env | cut -d '=' -f2-)
+DB_PASS=$(grep "^DB_PASSWORD=" .env | cut -d '=' -f2- | tr -d '"')
+DB_NAME=$(grep "^DB_DATABASE=" .env | cut -d '=' -f2-)
 mysqldump -u "$DB_USER" -p"$DB_PASS" "$DB_NAME" 2>/dev/null | gzip > "$BACKUP_FILE"
 log "Backup : $BACKUP_FILE"
 
@@ -53,7 +53,8 @@ sudo -u www-data git pull origin main
 
 # ─── 4. Composer install ───
 log "Mise à jour des dépendances PHP..."
-sudo -u www-data composer install --no-dev --optimize-autoloader --no-interaction
+mkdir -p /var/www/.composer && chown www-data:www-data /var/www/.composer
+sudo -u www-data env COMPOSER_HOME=/var/www/.composer composer install --no-dev --optimize-autoloader --no-interaction
 
 # ─── 5. Build assets ───
 log "Build des assets..."

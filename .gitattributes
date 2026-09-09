@@ -9,3 +9,10 @@
 /.github export-ignore
 CHANGELOG.md export-ignore
 .styleci.yml export-ignore
+
+# Templates Excel : binaires, jamais de conversion de fins de ligne
+*.xlsx binary
+*.xls  binary
+
+# Scripts de déploiement : toujours en LF (exécutés sur Ubuntu)
+*.sh text eol=lf
