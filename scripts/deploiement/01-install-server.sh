@@ -1,6 +1,6 @@
 #!/bin/bash
 # ═══════════════════════════════════════════════════════════════════════
-# Script d'installation système pour FMFP-DEES sur Ubuntu Server 22.04
+# Script d'installation système pour FMFP-DEES sur Ubuntu Server 22.04 ou 24.04 LTS
 # À exécuter avec sudo sur un serveur fraîchement installé.
 # ═══════════════════════════════════════════════════════════════════════
 
@@ -21,12 +21,26 @@ if [[ $EUID -ne 0 ]]; then
     err "Ce script doit être lancé avec sudo"
 fi
 
-# Vérifier Ubuntu 22.04
-if ! grep -q "22.04" /etc/os-release; then
-    warn "Attention : conçu pour Ubuntu 22.04. Détecté : $(lsb_release -d | cut -f2)"
-    read -p "Continuer quand même ? (o/N) : " confirm
-    [[ "$confirm" != "o" ]] && exit 1
-fi
+# ─── Vérifier la version d'Ubuntu (22.04 et 24.04 LTS validées) ───
+UBUNTU_VERSION="$( . /etc/os-release && echo "${VERSION_ID:-inconnue}" )"
+case "$UBUNTU_VERSION" in
+    24.04)
+        log "Ubuntu 24.04 LTS détecté — support jusqu'en avril 2029. Recommandé."
+        ;;
+    22.04)
+        warn "Ubuntu 22.04 LTS : support standard jusqu'en avril 2027 seulement."
+        warn "Pour un serveur neuf, préférez 24.04 LTS."
+        ;;
+    *)
+        warn "Script validé pour Ubuntu 22.04 et 24.04 LTS. Détecté : $UBUNTU_VERSION"
+        read -p "Continuer quand même ? (o/N) : " confirm
+        # NB : if/fi et non « [[ ]] && exit », qui sous set -e faisait sortir le
+        # script en cas de réponse « o » (la condition renvoyant 1).
+        if [[ "$confirm" != "o" ]]; then
+            exit 1
+        fi
+        ;;
+esac
 
 echo ""
 echo "═══════════════════════════════════════════════════════"
@@ -48,14 +62,31 @@ add-apt-repository -y ppa:ondrej/php
 apt update
 
 log "Installation de PHP 8.2 + extensions Laravel/Filament..."
+# NB : tokenizer et fileinfo ne sont PAS des paquets séparés sous Debian/Ubuntu,
+# ils sont compilés dans le cœur de PHP. Les demander à apt faisait échouer tout
+# le script (set -e) sur « Unable to locate package ». Ils sont vérifiés plus bas.
 apt install -y \
     php8.2 php8.2-fpm php8.2-cli \
     php8.2-mysql php8.2-redis \
     php8.2-mbstring php8.2-xml php8.2-gd \
     php8.2-zip php8.2-curl php8.2-bcmath \
-    php8.2-intl php8.2-opcache \
-    php8.2-tokenizer php8.2-fileinfo \
-    php8.2-imagick
+    php8.2-intl php8.2-opcache
+
+# Imagick est facultatif (Filament s'appuie sur GD) : ne pas bloquer s'il manque.
+apt install -y php8.2-imagick || warn "php8.2-imagick indisponible — ignoré (GD suffit)"
+
+# ─── 3bis. Vérifier que les extensions sont réellement chargées ───
+log "Vérification des extensions PHP requises..."
+REQUISES=(pdo_mysql redis mbstring xml gd zip curl bcmath intl tokenizer fileinfo openssl)
+MANQUANTES=""
+for ext in "${REQUISES[@]}"; do
+    php -m | grep -qix "$ext" || MANQUANTES="$MANQUANTES $ext"
+done
+php -m | grep -qi "opcache" || MANQUANTES="$MANQUANTES opcache"
+if [[ -n "$MANQUANTES" ]]; then
+    err "Extensions PHP manquantes :$MANQUANTES"
+fi
+log "Toutes les extensions requises sont chargées"
 
 # ─── 4. Composer ───
 log "Installation de Composer..."
@@ -81,7 +112,7 @@ apt install -y mariadb-server mariadb-client
 log "Installation de Redis..."
 apt install -y redis-server
 # Configurer Redis en mode systemd (best practice)
-sed -i 's/^supervised no/supervised systemd/' /etc/redis/redis.conf
+sed -i -E "s/^supervised (no|auto)/supervised systemd/" /etc/redis/redis.conf
 
 # ─── 8. Nginx ───
 log "Installation de Nginx..."

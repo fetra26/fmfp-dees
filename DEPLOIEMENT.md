@@ -1,9 +1,9 @@
 # 🚀 Déploiement FMFP-DEES sur serveur dédié
 
-**Cible** : Ubuntu Server 22.04 LTS, réseau LAN interne FMFP.
+**Cible** : Ubuntu Server 24.04 LTS (22.04 encore supporté), réseau LAN interne FMFP.
 
 **Stack final** :
-- Ubuntu Server 22.04 LTS
+- Ubuntu Server 24.04 LTS
 - Nginx 1.18 (reverse proxy + serveur statique)
 - PHP-FPM 8.2 + OPcache + JIT
 - MariaDB 10.11
@@ -17,7 +17,7 @@
 
 ## 📋 Prérequis
 
-- Serveur Ubuntu 22.04 LTS installé, à jour, connecté au réseau
+- **Le serveur existe déjà**, Ubuntu installé, à jour et joignable en SSH. Si ce n'est pas le cas, commencer par la [Phase 0 — Créer le serveur](scripts/deploiement/00-preparer-serveur.md) : choix de la machine, installation d'Ubuntu, IP fixe, accès SSH.
 - Compte utilisateur sudoer (ex: `fmfp`)
 - Accès SSH depuis un poste admin (ou console directe)
 - IP fixe attribuée au serveur (via DHCP réservation ou config manuelle)
@@ -25,9 +25,10 @@
 
 ---
 
-## 🎯 Vue d'ensemble en 6 phases
+## 🎯 Vue d'ensemble en 7 phases
 
 ```
+Phase 0 : Créer le serveur (voir 00-preparer-serveur.md)  (~1 h 30, 1 seule fois)
 Phase 1 : Installation du système       (~15 min, à faire 1 seule fois)
 Phase 2 : Configuration MariaDB         (~5 min)
 Phase 3 : Configuration Nginx + PHP      (~10 min)
