@@ -8,16 +8,14 @@ use Filament\Widgets\StatsOverviewWidget\Stat;
 use Illuminate\Support\Facades\Cache;
 
 /**
- * Répartition des projets soumis : notifié, engagé, refusé, annulé, clôturé.
+ * Répartition des projets soumis selon la taxonomie DEES.
  *
- * Répond au contrôle de cohérence de la DEES :
- *   soumis = notifié + engagé + refusé + annulé + clôturé
+ *   Soumis = Validé + Refusé + Non éligible + Incomplet
+ *   Validé = Notifié + Non notifié
+ *   Notifié = Engagé + Clôturé + Sans convention
  *
- * L'égalité est garantie par construction, la cascade de CategorisationProjets
- * étant exhaustive. Ce qu'il faut surveiller n'est donc pas un écart, mais la
- * taille de « Soumis sans suite » : ces projets sont bien dans la base, sans
- * aucun fait daté permettant de les situer dans le circuit. Un nombre élevé
- * signale un fichier incomplet plutôt qu'une erreur de calcul.
+ * Les totaux intermédiaires sont affichés à côté de leurs composantes, pour
+ * que la lecture suive l'arbre plutôt qu'une liste plate.
  */
 class ProjetsSoumisWidget extends BaseWidget
 {
@@ -30,66 +28,79 @@ class ProjetsSoumisWidget extends BaseWidget
     protected function getStats(): array
     {
         $data = Cache::remember('widget.stats.projets_soumis', 300, function () {
+            $comptes = CategorisationProjets::compter();
+
             return [
                 'total'   => CategorisationProjets::totalSoumis(),
-                'comptes' => CategorisationProjets::compter(),
+                'comptes' => $comptes,
+                'notifie' => CategorisationProjets::agregat($comptes, 'notifie'),
+                'valide'  => CategorisationProjets::agregat($comptes, 'valide'),
             ];
         });
 
-        $total   = $data['total'];
-        $c       = $data['comptes'];
-        $fmt     = fn (int $n) => number_format($n, 0, ',', ' ');
-        $part    = fn (int $n) => $total > 0 ? round($n * 100 / $total) . ' %' : '—';
-        $ouverts = $c['notifie'] + $c['engage'];
+        $total = $data['total'];
+        $c     = $data['comptes'];
+        $fmt   = fn (int $n) => number_format($n, 0, ',', ' ');
+        $part  = fn (int $n) => $total > 0 ? round($n * 100 / $total) . ' %' : '—';
 
-        return [
+        $stats = [
             Stat::make('Projets soumis', $fmt($total))
                 ->description('Total des lignes importées')
                 ->descriptionIcon('heroicon-m-inbox-stack')
                 ->icon('heroicon-o-inbox-stack')
                 ->color('primary'),
 
-            Stat::make('Notifié', $fmt($c['notifie']))
-                ->description($part($c['notifie']) . ' — notifiés, pas encore engagés')
-                ->descriptionIcon('heroicon-m-envelope')
-                ->color('info'),
+            Stat::make('Validé', $fmt($data['valide']))
+                ->description($part($data['valide']) . ' — dont ' . $fmt($data['notifie']) . ' notifiés')
+                ->descriptionIcon('heroicon-m-check-circle')
+                ->color('success'),
 
             Stat::make('Engagé', $fmt($c['engage']))
-                ->description($part($c['engage']) . ' — un montant est engagé')
-                ->descriptionIcon('heroicon-m-banknotes')
+                ->description($part($c['engage']) . ' — J1 versé, formation en cours')
+                ->descriptionIcon('heroicon-m-play-circle')
                 ->color('warning'),
 
-            Stat::make('Refusé', $fmt($c['refuse']))
-                ->description($part($c['refuse']))
-                ->descriptionIcon('heroicon-m-x-circle')
-                ->color('danger'),
-
-            Stat::make('Annulé', $fmt($c['annule']))
-                ->description($part($c['annule']) . ' — annulés ou résiliés')
-                ->descriptionIcon('heroicon-m-no-symbol')
-                ->color('gray'),
-
             Stat::make('Clôturé', $fmt($c['cloture']))
-                ->description($part($c['cloture']))
+                ->description($part($c['cloture']) . ' — J1 et J2 versés')
                 ->descriptionIcon('heroicon-m-check-badge')
                 ->color('success'),
 
-            Stat::make('Non clôturé', $fmt($ouverts))
-                ->description('Notifiés et engagés encore ouverts')
-                ->descriptionIcon('heroicon-m-clock')
-                ->color('info'),
+            Stat::make('Sans convention', $fmt($c['sans_convention']))
+                ->description($part($c['sans_convention']) . ' — aucun retour porteur')
+                ->descriptionIcon('heroicon-m-document-minus')
+                ->color('gray'),
 
-            // Le seul indicateur qui demande une action : ces projets sont en
-            // base sans date de notification, sans montant, sans statut
-            // exploitable. Ils échappent donc à tout suivi.
-            Stat::make('Soumis sans suite', $fmt($c['soumis_seul']))
-                ->description(
-                    $c['soumis_seul'] === 0
-                        ? 'Tous les projets sont situés dans le circuit'
-                        : 'Aucun fait daté : à compléter'
-                )
-                ->descriptionIcon('heroicon-m-question-mark-circle')
-                ->color($c['soumis_seul'] === 0 ? 'success' : 'danger'),
+            Stat::make('Non notifié', $fmt($c['non_notifie']))
+                ->description($part($c['non_notifie']) . ' — validé, jamais notifié')
+                ->descriptionIcon('heroicon-m-bell-slash')
+                ->color('gray'),
+
+            Stat::make('Refusé', $fmt($c['refuse']))
+                ->description($part($c['refuse']) . ' — CSP ou AFD')
+                ->descriptionIcon('heroicon-m-x-circle')
+                ->color('danger'),
+
+            Stat::make('Non éligible', $fmt($c['non_eligible']))
+                ->description($part($c['non_eligible']))
+                ->descriptionIcon('heroicon-m-no-symbol')
+                ->color('danger'),
+
+            Stat::make('Incomplet', $fmt($c['incomplet']))
+                ->description($part($c['incomplet']) . ' — attente pièces')
+                ->descriptionIcon('heroicon-m-document-magnifying-glass')
+                ->color('warning'),
         ];
+
+        // Cas qu'aucune branche du schéma DEES ne couvre : notifié, convention
+        // revenue, mais pas le moindre versement. Affiché seulement s'il en
+        // existe, pour ne pas encombrer le tableau de bord quand tout est net.
+        if ($c['notifie_sans_versement'] > 0) {
+            $stats[] = Stat::make('Notifié, sans versement', $fmt($c['notifie_sans_versement']))
+                ->description('Convention revenue, aucun J1 — à qualifier')
+                ->descriptionIcon('heroicon-m-question-mark-circle')
+                ->color('info');
+        }
+
+        return $stats;
     }
 }

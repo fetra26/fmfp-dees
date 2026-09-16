@@ -4,80 +4,122 @@ namespace App\Services;
 
 use App\Models\PorteurProj;
 use Illuminate\Database\Eloquent\Builder;
-use Illuminate\Support\Facades\DB;
 
 /**
- * Répartition des projets soumis selon leur état d'avancement.
+ * Classement des projets soumis selon la taxonomie DEES.
  *
- * Règle DEES : soumis = notifié + engagé + refusé + annulé + clôturé.
+ *   Soumis
+ *   ├── Validé
+ *   │   ├── Non notifié        (motif : possible problème DT)
+ *   │   └── Notifié
+ *   │       ├── Engagé          J1 versé — formation en cours
+ *   │       ├── Clôturé         J1 + J2 versés (parfois + J3 sur les cas équité)
+ *   │       └── Sans convention aucun retour porteur
+ *   ├── Refusé                  par CSP ou AFD, avec motif
+ *   ├── Non éligible            avec motifs
+ *   └── Incomplet               dossier incomplet / attente pièces régul.
  *
- * Pour que cette égalité tienne, les catégories doivent être mutuellement
- * exclusives : un projet clôturé porte forcément une date de notification, et
- * serait compté deux fois si « notifié » signifiait simplement « a une date de
- * notification ». Chaque projet est donc classé dans l'état LE PLUS AVANCÉ
- * qu'il a atteint, par une cascade descendante.
+ * Les catégories sont DÉRIVÉES des faits en base — statut, dates, paiements —
+ * et non d'une saisie supplémentaire. Le classement suit donc toute correction
+ * apportée aux données.
  *
- * L'unité de comptage est le porteur_proj, soit une ligne du fichier Excel :
- * un même projet porté par deux entreprises compte pour deux, conformément à
- * la lecture de la DEES.
+ * Les feuilles de l'arbre sont mutuellement exclusives : un projet clôturé a
+ * forcément été notifié, et serait compté deux fois si « notifié » se lisait
+ * comme un simple fait. Chaque projet tombe dans l'état LE PLUS AVANCÉ atteint,
+ * et les niveaux supérieurs (Validé, Notifié, Soumis) sont des sommes.
  *
- * La catégorie n'est stockée nulle part : elle est dérivée des faits présents
- * en base — dates, montants, situation d'allocation. Aucune saisie
- * supplémentaire n'est demandée à la DEES, et la répartition suit
- * automatiquement toute correction apportée aux données.
+ * L'unité de comptage est le porteur_proj, soit une ligne du fichier importé.
  */
 class CategorisationProjets
 {
-    /** Catégories, de la plus avancée à la moins avancée. L'ordre fait la cascade. */
+    /** Feuilles de l'arbre, seules catégories réellement attribuées. */
     public const CATEGORIES = [
-        'cloture'     => 'Clôturé',
-        'annule'      => 'Annulé',
-        'refuse'      => 'Refusé',
-        'engage'      => 'Engagé',
-        'notifie'     => 'Notifié',
-        'soumis_seul' => 'Soumis sans suite',
+        'cloture'        => 'Clôturé',
+        'engage'         => 'Engagé',
+        'sans_convention' => 'Sans convention',
+        'notifie_sans_versement' => 'Notifié, sans versement',
+        'non_notifie'    => 'Non notifié',
+        'refuse'         => 'Refusé',
+        'non_eligible'   => 'Non éligible',
+        'incomplet'      => 'Incomplet',
     ];
 
-    /** Statuts valant clôture. */
-    private const STATUTS_CLOTURE = ['cloture', 'fini_cloture'];
+    /** Regroupements de l'arbre : un niveau est la somme de ses feuilles. */
+    public const AGREGATS = [
+        'notifie' => ['engage', 'cloture', 'sans_convention', 'notifie_sans_versement'],
+        'valide'  => ['engage', 'cloture', 'sans_convention', 'notifie_sans_versement', 'non_notifie'],
+    ];
 
-    /** Statuts valant annulation. */
-    private const STATUTS_ANNULE = ['annule', 'resilie'];
+    private const STATUTS_REFUSE = ['refuse'];
+    private const STATUTS_NON_ELIGIBLE = ['inelig'];
+    private const STATUTS_INCOMPLET = ['incomplet', 'attente_pieces_regul'];
 
-    /** Statuts valant refus. */
-    private const STATUTS_REFUSE = ['refuse', 'inelig'];
+    /** Sous-requête : la tranche demandée a-t-elle été versée ? */
+    private static function trancheVersee(string $ligne): string
+    {
+        return "EXISTS (
+            SELECT 1 FROM paiement p
+            WHERE p.porteur_proj_id = porteur_proj.id
+              AND p.ligne = '{$ligne}'
+              AND p.is_annule = 0
+              AND p.deleted_at IS NULL
+        )";
+    }
 
     /**
-     * Expression SQL qui attribue sa catégorie à chaque ligne.
+     * Expression SQL attribuant sa feuille à chaque projet.
      *
-     * Écrite en une seule expression CASE plutôt qu'en requêtes séparées : la
-     * cascade est ainsi exhaustive par construction, chaque ligne tombant dans
-     * exactement une branche. L'égalité « somme des catégories = total soumis »
-     * est donc garantie, et non simplement espérée.
+     * Écrite en une seule expression CASE : la cascade est exhaustive par
+     * construction, chaque ligne tombant dans exactement une branche. L'égalité
+     * « somme des feuilles = total soumis » est donc garantie, pas espérée.
      */
     public static function expressionSql(): string
     {
-        $cloture = "'" . implode("','", self::STATUTS_CLOTURE) . "'";
-        $annule  = "'" . implode("','", self::STATUTS_ANNULE) . "'";
-        $refuse  = "'" . implode("','", self::STATUTS_REFUSE) . "'";
+        $refuse      = "'" . implode("','", self::STATUTS_REFUSE) . "'";
+        $nonEligible = "'" . implode("','", self::STATUTS_NON_ELIGIBLE) . "'";
+        $incomplet   = "'" . implode("','", self::STATUTS_INCOMPLET) . "'";
 
+        $j1 = self::trancheVersee('J1');
+        $j2 = self::trancheVersee('J2');
+
+        // L'ordre suit la force du signal : décision explicite, puis fait
+        // avéré, puis valeur faible.
         return "CASE
-            WHEN statut_validation IN ({$cloture}) THEN 'cloture'
-            WHEN statut_validation IN ({$annule})
-                 OR date_resiliation IS NOT NULL
-                 OR situation_alloc = 'annule' THEN 'annule'
-            WHEN statut_validation IN ({$refuse}) THEN 'refuse'
-            WHEN COALESCE(montant_total, 0) > 0
-                 OR COALESCE(financement_demande, 0) > 0 THEN 'engage'
-            WHEN date_notification IS NOT NULL THEN 'notifie'
-            ELSE 'soumis_seul'
+            -- 1. Décisions explicites de rejet : elles ne s'obtiennent que par
+            --    une saisie délibérée, jamais par défaut.
+            WHEN statut_validation IN ({$refuse})      THEN 'refuse'
+            WHEN statut_validation IN ({$nonEligible}) THEN 'non_eligible'
+
+            -- 2. Versements : de l'argent versé est un fait, qui prime sur tout
+            --    libellé de statut. Sans cette priorité, un projet payé restait
+            --    classé « incomplet », statut_validation valant 'incomplet' par
+            --    défaut en base ET pour toute cellule de statut vide.
+            --    Clôturé exige J1 ET J2 ; le J3 n'existe que sur les cas équité
+            --    et ne conditionne donc pas la clôture.
+            WHEN {$j1} AND {$j2} THEN 'cloture'
+            WHEN {$j1}           THEN 'engage'
+
+            -- 3. Dossier incomplet ou en attente de pièces. Placé après les
+            --    versements précisément parce que c'est la valeur par défaut.
+            WHEN statut_validation IN ({$incomplet}) THEN 'incomplet'
+
+            -- 4. Validé mais jamais notifié au porteur.
+            WHEN date_notification IS NULL THEN 'non_notifie'
+
+            -- 5. Notifié sans versement : le porteur a-t-il retourné la convention ?
+            WHEN date_reception_convention IS NULL THEN 'sans_convention'
+
+            -- 6. Convention revenue, mais pas le moindre versement : ni engagé
+            --    au sens DEES, ni sans convention. Cas qu'aucune branche du
+            --    schéma ne couvre, isolé plutôt que rangé d'office ailleurs.
+            ELSE 'notifie_sans_versement'
         END";
     }
 
     /**
-     * Compte les projets par catégorie, en une seule requête.
+     * Compte les projets par feuille, en une seule requête.
      *
-     * @return array<string, int>  Toutes les catégories sont présentes, à zéro le cas échéant.
+     * @return array<string, int>  Toutes les feuilles sont présentes, à zéro le cas échéant.
      */
     public static function compter(): array
     {
@@ -95,37 +137,47 @@ class CategorisationProjets
         return $comptes;
     }
 
+    /**
+     * Compte un niveau intermédiaire de l'arbre (notifie, valide).
+     *
+     * @param  array<string, int>  $comptes  Résultat de compter()
+     */
+    public static function agregat(array $comptes, string $niveau): int
+    {
+        $total = 0;
+        foreach (self::AGREGATS[$niveau] ?? [] as $feuille) {
+            $total += $comptes[$feuille] ?? 0;
+        }
+
+        return $total;
+    }
+
     /** Nombre total de projets soumis, soit une ligne de fichier importée. */
     public static function totalSoumis(): int
     {
         return PorteurProj::count();
     }
 
-    /**
-     * Restreint une requête à une catégorie.
-     *
-     * Permet d'ouvrir la liste des projets concernés depuis le tableau de bord,
-     * en s'appuyant sur la même définition que les compteurs.
-     */
+    /** Restreint une requête à une feuille, pour ouvrir la liste correspondante. */
     public static function filtrer(Builder $query, string $categorie): Builder
     {
         return $query->whereRaw(self::expressionSql() . ' = ?', [$categorie]);
     }
 
-    /** Catégorie d'un projet donné, avec le même classement que les compteurs. */
+    /** Feuille d'un projet donné, avec le même classement que les compteurs. */
     public static function categorieDe(PorteurProj $porteurProj): string
     {
-        // On passe par first() et non value() : ce dernier remplace le SELECT
-        // par la seule colonne demandée, ce qui écraserait l'expression CASE.
+        // first() et non value() : ce dernier remplace le SELECT par la seule
+        // colonne demandée, ce qui écraserait l'expression CASE.
         $ligne = PorteurProj::query()
             ->whereKey($porteurProj->getKey())
             ->selectRaw(self::expressionSql() . ' AS categorie')
             ->first();
 
-        return (string) ($ligne?->categorie ?? 'soumis_seul');
+        return (string) ($ligne?->categorie ?? 'non_notifie');
     }
 
-    /** Libellé lisible d'une catégorie. */
+    /** Libellé lisible d'une feuille. */
     public static function libelle(string $categorie): string
     {
         return self::CATEGORIES[$categorie] ?? $categorie;

@@ -4,19 +4,28 @@ namespace Tests\Feature;
 
 use App\Models\PorteurProj;
 use App\Services\CategorisationProjets;
+use Database\Factories\PaiementFactory;
 use Database\Factories\PorteurProjFactory;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use PHPUnit\Framework\Attributes\Test;
 use Tests\TestCase;
 
 /**
- * Contrôle de cohérence de la DEES :
- *   soumis = notifié + engagé + refusé + annulé + clôturé
+ * Taxonomie DEES des projets soumis.
  *
- * Les catégories sont dérivées des faits en base — dates, montants, situation
- * d'allocation — et non d'un libellé de statut saisi à la main. Un projet est
- * classé dans l'état LE PLUS AVANCÉ qu'il a atteint, sans quoi un projet
- * clôturé serait aussi compté comme notifié et la somme dépasserait le total.
+ *   Soumis
+ *   ├── Validé
+ *   │   ├── Non notifié
+ *   │   └── Notifié
+ *   │       ├── Engagé          J1 versé
+ *   │       ├── Clôturé         J1 + J2 versés
+ *   │       └── Sans convention aucun retour porteur
+ *   ├── Refusé
+ *   ├── Non éligible
+ *   └── Incomplet
+ *
+ * L'avancement d'un projet notifié se lit sur les VERSEMENTS, pas sur les
+ * montants conventionnés : une convention signée n'est pas un paiement.
  */
 class CategorisationProjetsTest extends TestCase
 {
@@ -24,154 +33,242 @@ class CategorisationProjetsTest extends TestCase
 
     private function projet(array $attributs = []): PorteurProj
     {
-        // La factory renseigne montant_total : on part d'un projet nu, pour que
-        // chaque test ne porte que le fait qu'il veut éprouver.
+        // statut_validation est explicité : la colonne vaut 'incomplet' par
+        // défaut en base, ce qui classerait tous les projets de test en dossier
+        // incomplet et masquerait ce que chaque cas cherche à éprouver.
         return PorteurProjFactory::new()->create(array_merge([
-            'montant_total'       => 0,
-            'financement_demande' => 0,
+            'statut_validation'         => 'valide',
+            'date_notification'         => '2026-01-10',
+            'date_reception_convention' => '2026-02-01',
         ], $attributs));
     }
 
-    private function categorie(array $attributs = []): string
+    private function verser(PorteurProj $pp, string ...$tranches): PorteurProj
     {
-        return CategorisationProjets::categorieDe($this->projet($attributs));
+        foreach ($tranches as $tranche) {
+            PaiementFactory::new()
+                ->tranche($tranche, 1_000_000)
+                ->create(['porteur_proj_id' => $pp->id]);
+        }
+
+        return $pp;
+    }
+
+    private function categorie(PorteurProj $pp): string
+    {
+        return CategorisationProjets::categorieDe($pp);
+    }
+
+    // ─────────── Premier niveau : le dossier n'a pas passé l'instruction
+
+    #[Test]
+    public function un_dossier_refuse_est_classe_refuse(): void
+    {
+        $this->assertSame('refuse', $this->categorie($this->projet(['statut_validation' => 'refuse'])));
     }
 
     #[Test]
-    public function un_projet_sans_aucun_fait_reste_soumis_sans_suite(): void
+    public function un_dossier_ineligible_est_distinct_d_un_refus(): void
     {
-        // Ni date, ni montant, ni statut : le projet est en base mais échappe
-        // à tout suivi. C'est le seul indicateur qui demande une action.
-        $this->assertSame('soumis_seul', $this->categorie());
+        // Deux catégories de premier niveau distinctes dans le schéma DEES :
+        // les confondre masquerait le motif du rejet.
+        $this->assertSame('non_eligible', $this->categorie($this->projet(['statut_validation' => 'inelig'])));
     }
 
     #[Test]
-    public function une_date_de_notification_suffit_a_le_rendre_notifie(): void
+    public function un_dossier_incomplet_est_classe_incomplet(): void
     {
-        $this->assertSame('notifie', $this->categorie(['date_notification' => '2026-03-01']));
+        $this->assertSame('incomplet', $this->categorie($this->projet(['statut_validation' => 'incomplet'])));
     }
 
     #[Test]
-    public function un_montant_total_le_rend_engage(): void
+    public function l_attente_de_pieces_vaut_dossier_incomplet(): void
     {
-        $this->assertSame('engage', $this->categorie(['montant_total' => 5_000_000]));
+        // « Attente pièces régul. » est la formulation DEES du dossier
+        // incomplet : les deux doivent tomber dans la même catégorie.
+        $this->assertSame('incomplet', $this->categorie($this->projet(['statut_validation' => 'attente_pieces_regul'])));
     }
 
     #[Test]
-    public function un_financement_demande_suffit_aussi(): void
+    public function un_projet_paye_n_est_jamais_classe_incomplet(): void
     {
-        $this->assertSame('engage', $this->categorie(['financement_demande' => 2_000_000]));
+        // Le piège principal : statut_validation vaut 'incomplet' par défaut en
+        // base, et une cellule de statut vide dans le fichier donne la même
+        // valeur. Un projet dont les tranches ont été versées serait alors
+        // rangé parmi les dossiers incomplets, ce qui fausserait le pilotage.
+        $pp = $this->verser($this->projet(['statut_validation' => 'incomplet']), 'J1', 'J2');
+
+        $this->assertSame('cloture', $this->categorie($pp));
     }
 
     #[Test]
-    public function un_montant_a_zero_ne_vaut_pas_engagement(): void
+    public function un_statut_laisse_vide_par_defaut_ne_masque_pas_un_engagement(): void
     {
-        $this->assertSame('notifie', $this->categorie([
-            'date_notification' => '2026-03-01',
-            'montant_total'     => 0,
-        ]));
+        $pp = PorteurProjFactory::new()->create([
+            'date_notification'         => '2026-01-10',
+            'date_reception_convention' => '2026-02-01',
+        ]); // statut_validation non fourni : la base met 'incomplet'
+
+        $this->verser($pp, 'J1');
+
+        $this->assertSame('engage', $this->categorie($pp));
+    }
+
+    // ─────────── Validé : notifié ou non
+
+    #[Test]
+    public function un_projet_valide_sans_date_de_notification_est_non_notifie(): void
+    {
+        $this->assertSame('non_notifie', $this->categorie($this->projet(['date_notification' => null])));
     }
 
     #[Test]
-    public function un_statut_refuse_le_rend_refuse(): void
+    public function le_rejet_prime_sur_l_absence_de_notification(): void
     {
-        $this->assertSame('refuse', $this->categorie(['statut_validation' => 'refuse']));
-        $this->assertSame('refuse', $this->categorie(['statut_validation' => 'inelig']));
+        $this->assertSame('refuse', $this->categorie($this->projet([
+            'statut_validation' => 'refuse',
+            'date_notification' => null,
+        ])));
+    }
+
+    // ─────────── Notifié : l'avancement se lit sur les versements
+
+    #[Test]
+    public function un_projet_notifie_sans_retour_porteur_est_sans_convention(): void
+    {
+        $this->assertSame('sans_convention', $this->categorie($this->projet([
+            'date_reception_convention' => null,
+        ])));
     }
 
     #[Test]
-    public function une_date_de_resiliation_le_rend_annule(): void
+    public function le_versement_de_j1_rend_le_projet_engage(): void
     {
-        $this->assertSame('annule', $this->categorie(['date_resiliation' => '2026-05-01']));
+        $pp = $this->verser($this->projet(), 'J1');
+
+        $this->assertSame('engage', $this->categorie($pp));
     }
 
     #[Test]
-    public function une_allocation_annulee_le_rend_annule(): void
+    public function j1_et_j2_verses_cloturent_le_projet(): void
     {
-        $this->assertSame('annule', $this->categorie(['situation_alloc' => 'annule']));
+        $pp = $this->verser($this->projet(), 'J1', 'J2');
+
+        $this->assertSame('cloture', $this->categorie($pp));
     }
 
     #[Test]
-    public function un_statut_cloture_le_rend_cloture(): void
+    public function un_troisieme_jalon_ne_change_rien_a_la_cloture(): void
     {
-        $this->assertSame('cloture', $this->categorie(['statut_validation' => 'cloture']));
-        $this->assertSame('cloture', $this->categorie(['statut_validation' => 'fini_cloture']));
+        // Les cas équité comportent un J3 : sa présence ne doit ni empêcher
+        // ni conditionner la clôture, acquise dès J1 + J2.
+        $pp = $this->verser($this->projet(), 'J1', 'J2', 'J3');
+
+        $this->assertSame('cloture', $this->categorie($pp));
     }
 
     #[Test]
-    public function la_cloture_prime_sur_tout_le_reste(): void
+    public function un_paiement_annule_ne_compte_pas_comme_versement(): void
     {
-        // Un projet clôturé a forcément été notifié et engagé : il ne doit
-        // apparaître QUE dans « clôturé ».
-        $this->assertSame('cloture', $this->categorie([
-            'statut_validation'   => 'cloture',
-            'date_notification'   => '2026-01-10',
-            'montant_total'       => 8_000_000,
-            'date_resiliation'    => '2026-06-01',
-        ]));
+        $pp = $this->projet();
+        PaiementFactory::new()->tranche('J1', 1_000_000)->annule()->create(['porteur_proj_id' => $pp->id]);
+
+        // Une tranche annulée reste en base pour la traçabilité, mais ne fait
+        // pas avancer le projet.
+        $this->assertSame('notifie_sans_versement', $this->categorie($pp));
     }
 
     #[Test]
-    public function l_annulation_prime_sur_l_engagement_et_la_notification(): void
+    public function un_paiement_supprime_ne_compte_pas_non_plus(): void
     {
-        $this->assertSame('annule', $this->categorie([
-            'date_resiliation'  => '2026-06-01',
-            'date_notification' => '2026-01-10',
-            'montant_total'     => 8_000_000,
-        ]));
+        $pp = $this->verser($this->projet(), 'J1');
+        $pp->paiements()->first()->delete();
+
+        $this->assertSame('notifie_sans_versement', $this->categorie($pp));
     }
 
     #[Test]
-    public function l_engagement_prime_sur_la_notification(): void
+    public function un_versement_prime_sur_l_absence_de_convention(): void
     {
-        $this->assertSame('engage', $this->categorie([
-            'date_notification' => '2026-01-10',
-            'montant_total'     => 8_000_000,
-        ]));
+        // Incohérence possible dans les données : de l'argent versé sans date
+        // de retour de convention. Le fait le plus avancé l'emporte.
+        $pp = $this->verser($this->projet(['date_reception_convention' => null]), 'J1');
+
+        $this->assertSame('engage', $this->categorie($pp));
     }
 
     #[Test]
-    public function la_somme_des_categories_vaut_le_total_soumis(): void
+    public function un_projet_notifie_avec_convention_mais_sans_versement_est_isole(): void
     {
-        // Le contrôle de cohérence demandé par la DEES, sur un échantillon
-        // couvrant tous les cas de figure.
-        $this->projet();                                               // sans suite
-        $this->projet(['date_notification' => '2026-01-10']);           // notifié
-        $this->projet(['date_notification' => '2026-01-11']);           // notifié
-        $this->projet(['montant_total' => 3_000_000]);                  // engagé
+        // Ce cas ne figure dans aucune branche du schéma DEES : plutôt que de
+        // le ranger d'office ailleurs, il est identifié pour être qualifié.
+        $this->assertSame('notifie_sans_versement', $this->categorie($this->projet()));
+    }
+
+    // ─────────── Cohérence de l'arbre
+
+    #[Test]
+    public function la_somme_des_feuilles_vaut_le_total_soumis(): void
+    {
+        $this->verser($this->projet(), 'J1');                          // engagé
+        $this->verser($this->projet(), 'J1', 'J2');                    // clôturé
+        $this->projet(['date_reception_convention' => null]);           // sans convention
+        $this->projet(['date_notification' => null]);                   // non notifié
         $this->projet(['statut_validation' => 'refuse']);               // refusé
-        $this->projet(['date_resiliation' => '2026-02-01']);            // annulé
-        $this->projet(['statut_validation' => 'cloture']);              // clôturé
-        $this->projet(['statut_validation' => 'fini_cloture']);         // clôturé
+        $this->projet(['statut_validation' => 'inelig']);               // non éligible
+        $this->projet(['statut_validation' => 'attente_pieces_regul']); // incomplet
+        $this->projet();                                                // notifié sans versement
 
         $comptes = CategorisationProjets::compter();
         $total   = CategorisationProjets::totalSoumis();
 
         $this->assertSame(8, $total);
-        $this->assertSame(
-            $total,
-            array_sum($comptes),
-            'soumis doit égaler notifié + engagé + refusé + annulé + clôturé + sans suite.'
-        );
+        $this->assertSame($total, array_sum($comptes), 'Chaque projet doit tomber dans exactement une feuille.');
 
-        $this->assertSame(2, $comptes['notifie']);
         $this->assertSame(1, $comptes['engage']);
+        $this->assertSame(1, $comptes['cloture']);
+        $this->assertSame(1, $comptes['sans_convention']);
+        $this->assertSame(1, $comptes['non_notifie']);
         $this->assertSame(1, $comptes['refuse']);
-        $this->assertSame(1, $comptes['annule']);
-        $this->assertSame(2, $comptes['cloture']);
-        $this->assertSame(1, $comptes['soumis_seul']);
+        $this->assertSame(1, $comptes['non_eligible']);
+        $this->assertSame(1, $comptes['incomplet']);
+        $this->assertSame(1, $comptes['notifie_sans_versement']);
     }
 
     #[Test]
-    public function l_egalite_tient_meme_sur_des_donnees_contradictoires(): void
+    public function notifie_est_la_somme_de_ses_branches(): void
     {
-        // La cascade étant exhaustive, aucune combinaison de faits ne peut
-        // faire tomber un projet dans deux catégories ni dans aucune.
+        $this->verser($this->projet(), 'J1');                // engagé
+        $this->verser($this->projet(), 'J1', 'J2');          // clôturé
+        $this->projet(['date_reception_convention' => null]); // sans convention
+        $this->projet(['date_notification' => null]);         // non notifié — exclu
+        $this->projet(['statut_validation' => 'refuse']);     // refusé — exclu
+
+        $comptes = CategorisationProjets::compter();
+
+        $this->assertSame(3, CategorisationProjets::agregat($comptes, 'notifie'));
+    }
+
+    #[Test]
+    public function valide_englobe_les_notifies_et_les_non_notifies(): void
+    {
+        $this->verser($this->projet(), 'J1');            // notifié
+        $this->projet(['date_notification' => null]);     // non notifié
+        $this->projet(['statut_validation' => 'refuse']); // hors validé
+
+        $comptes = CategorisationProjets::compter();
+
+        $this->assertSame(2, CategorisationProjets::agregat($comptes, 'valide'));
+    }
+
+    #[Test]
+    public function l_egalite_tient_sur_des_donnees_contradictoires(): void
+    {
         foreach ([
-            ['statut_validation' => 'cloture', 'date_resiliation' => '2026-01-01'],
-            ['statut_validation' => 'refuse',  'montant_total' => 9_000_000],
-            ['situation_alloc' => 'annule',    'date_notification' => '2026-01-01'],
-            ['statut_validation' => 'valide',  'date_notification' => '2026-01-01'],
+            ['statut_validation' => 'refuse', 'date_notification' => '2026-01-01'],
+            ['statut_validation' => 'inelig', 'date_reception_convention' => null],
+            ['date_notification' => null, 'date_reception_convention' => null],
+            ['statut_validation' => 'valide'],
         ] as $cas) {
             $this->projet($cas);
         }
@@ -183,28 +280,22 @@ class CategorisationProjetsTest extends TestCase
     }
 
     #[Test]
-    public function chaque_categorie_est_presente_meme_a_zero(): void
+    public function chaque_feuille_est_presente_meme_a_zero(): void
     {
-        // Le widget lit ce tableau directement : une clé manquante le ferait
-        // planter sur une base vide.
         $comptes = CategorisationProjets::compter();
 
-        $this->assertSame(
-            array_keys(CategorisationProjets::CATEGORIES),
-            array_keys($comptes)
-        );
+        $this->assertSame(array_keys(CategorisationProjets::CATEGORIES), array_keys($comptes));
         $this->assertSame(0, array_sum($comptes));
     }
 
     #[Test]
-    public function le_filtre_retrouve_exactement_les_projets_d_une_categorie(): void
+    public function le_filtre_retrouve_exactement_les_projets_d_une_feuille(): void
     {
-        $this->projet(['date_notification' => '2026-01-10']);
-        $this->projet(['date_notification' => '2026-01-11']);
-        $this->projet(['statut_validation' => 'cloture']);
+        $this->verser($this->projet(), 'J1');
+        $this->verser($this->projet(), 'J1');
+        $this->verser($this->projet(), 'J1', 'J2');
 
-        $notifies = CategorisationProjets::filtrer(PorteurProj::query(), 'notifie')->count();
-
-        $this->assertSame(2, $notifies);
+        $this->assertSame(2, CategorisationProjets::filtrer(PorteurProj::query(), 'engage')->count());
+        $this->assertSame(1, CategorisationProjets::filtrer(PorteurProj::query(), 'cloture')->count());
     }
 }
