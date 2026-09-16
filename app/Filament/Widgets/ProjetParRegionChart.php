@@ -12,8 +12,8 @@ class ProjetParRegionChart extends ChartWidget
 
     public const SLUG = 'projet_par_region';
 
-    protected ?string $heading = 'Projets par région';
-    protected static ?int $sort = 3;
+    protected ?string $heading = "🗺 Projets par région";
+    protected static ?int $sort = 80;
     protected static bool $isLazy = true;
 
     protected function getData(): array

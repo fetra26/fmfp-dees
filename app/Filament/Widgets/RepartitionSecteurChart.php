@@ -12,8 +12,8 @@ class RepartitionSecteurChart extends ChartWidget
 
     public const SLUG = 'repartition_secteur';
 
-    protected ?string $heading = '🏭 Répartition par secteur';
-    protected static ?int $sort = 7;
+    protected ?string $heading = "🏭 Répartition par secteur";
+    protected static ?int $sort = 90;
     protected static bool $isLazy = true;
 
     protected function getData(): array

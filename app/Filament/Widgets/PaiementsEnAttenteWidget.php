@@ -27,8 +27,8 @@ class PaiementsEnAttenteWidget extends BaseWidget
 
     public const SLUG = 'paiements_attente';
 
-    protected static ?string $heading = '💰 Paiements en attente';
-    protected static ?int $sort = 3;
+    protected static ?string $heading = '💳 Paiements en attente';
+    protected static ?int $sort = 60;
     protected int | string | array $columnSpan = 'full';
 
     /** Lazy loading : le widget se charge seulement quand il devient visible à l'écran */

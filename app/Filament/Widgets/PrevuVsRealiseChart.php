@@ -12,8 +12,8 @@ class PrevuVsRealiseChart extends ChartWidget
 
     public const SLUG = 'prevu_vs_realise';
 
-    protected ?string $heading = '📊 Bénéficiaires : Prévu vs Réalisé';
-    protected static ?int $sort = 9;
+    protected ?string $heading = "📉 Bénéficiaires : Prévu vs Réalisé";
+    protected static ?int $sort = 120;
     protected static bool $isLazy = true;
 
     protected function getData(): array

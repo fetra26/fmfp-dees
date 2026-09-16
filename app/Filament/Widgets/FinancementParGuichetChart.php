@@ -12,8 +12,8 @@ class FinancementParGuichetChart extends ChartWidget
 
     public const SLUG = 'financement_par_guichet';
 
-    protected ?string $heading = '💼 Financement par guichet (Ar)';
-    protected static ?int $sort = 8;
+    protected ?string $heading = "💼 Financement par guichet (Ar)";
+    protected static ?int $sort = 100;
     protected static bool $isLazy = true;
 
     protected function getData(): array

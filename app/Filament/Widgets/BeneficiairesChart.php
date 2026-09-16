@@ -12,8 +12,8 @@ class BeneficiairesChart extends ChartWidget
 
     public const SLUG = 'beneficiaires';
 
-    protected ?string $heading = 'Bénéficiaires réels — Répartition';
-    protected static ?int $sort = 4;
+    protected ?string $heading = "👤 Bénéficiaires réels — Répartition";
+    protected static ?int $sort = 110;
     protected static bool $isLazy = true;
 
     protected function getData(): array

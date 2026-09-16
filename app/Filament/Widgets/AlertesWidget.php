@@ -13,7 +13,9 @@ class AlertesWidget extends BaseWidget
 
     public const SLUG = 'alertes';
 
-    protected static ?int $sort = 0;
+    protected static ?int $sort = 10;
+    protected ?string $heading = "🚦 Alertes de suivi";
+    protected ?string $description = "Projets en retard sur la date de fin de convention";
 
     protected function getStats(): array
     {

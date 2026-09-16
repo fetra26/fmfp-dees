@@ -23,7 +23,9 @@ class ProjetsSoumisWidget extends BaseWidget
 
     public const SLUG = 'projets_soumis';
 
-    protected static ?int $sort = 0;
+    protected static ?int $sort = 20;
+    protected ?string $heading = "📋 Projets soumis — répartition DEES";
+    protected ?string $description = "Soumis = Validé + Refusé + Non éligible + Incomplet";
 
     protected function getStats(): array
     {

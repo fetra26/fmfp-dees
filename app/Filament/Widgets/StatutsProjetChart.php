@@ -12,8 +12,8 @@ class StatutsProjetChart extends ChartWidget
 
     public const SLUG = 'statuts_projet';
 
-    protected ?string $heading = 'Projets par statut';
-    protected static ?int $sort = 2;
+    protected ?string $heading = "📈 Projets par statut";
+    protected static ?int $sort = 70;
     protected static bool $isLazy = true;
 
     protected function getData(): array

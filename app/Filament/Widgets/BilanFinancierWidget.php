@@ -14,8 +14,8 @@ class BilanFinancierWidget extends BaseWidget
 
     public const SLUG = 'bilan_financier';
 
-    protected static ?int $sort = 5;
-    protected ?string $heading = '💰 Bilan financier';
+    protected static ?int $sort = 40;
+    protected ?string $heading = "💰 Bilan financier";
 
     protected function getStats(): array
     {

@@ -23,7 +23,9 @@ class StatsOverviewWidget extends BaseWidget
 
     public const SLUG = 'stats_overview';
 
-    protected static ?int $sort = 1;
+    protected static ?int $sort = 30;
+    protected ?string $heading = "📊 Vue d'ensemble";
+    protected ?string $description = "Portefeuille, bénéficiaires et allocation cumulée";
 
     protected function getStats(): array
     {

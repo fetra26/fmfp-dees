@@ -13,8 +13,8 @@ class PerformanceBeneficiairesWidget extends BaseWidget
 
     public const SLUG = 'performance_benef';
 
-    protected static ?int $sort = 6;
-    protected ?string $heading = '👥 Performance bénéficiaires (Prévu vs Réalisé)';
+    protected static ?int $sort = 50;
+    protected ?string $heading = "👥 Performance bénéficiaires (Prévu vs Réalisé)";
 
     protected function getStats(): array
     {
