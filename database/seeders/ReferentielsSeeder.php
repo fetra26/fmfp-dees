@@ -213,7 +213,9 @@ class ReferentielsSeeder extends Seeder
     {
         $alias = [
             // ── Mot seul → le « Multi » correspondant (règle donnée par la DEES)
-            'MULTI_AUTRE'     => ['AUTRE', 'AUTRES', 'DIVERS'],
+            // « MULTI » seul, sans domaine précisé, n'est pas rattachable à un
+            // secteur particulier : il tombe dans le fourre-tout prévu pour ça.
+            'MULTI_AUTRE'     => ['AUTRE', 'AUTRES', 'DIVERS', 'MULTI', 'MULTI AUTRES'],
             'MULTI_SANTE'     => ['SANTE', 'SANTE SOCIAL', 'SANITAIRE'],
             'MULTI_EDUCATION' => ['EDUCATION', 'EDUCATION FORMATION', 'ENSEIGNEMENT', 'FORMATION'],
             'MULTI_TRANSPORT' => ['TRANSPORT', 'TRANSPORT LOGISTIQUE', 'LOGISTIQUE'],
