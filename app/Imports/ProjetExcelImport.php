@@ -1290,8 +1290,40 @@ class ProjetExcelImport implements ToCollection, WithStartRow, WithChunkReading
 
     protected function parseMontant(mixed $v): int
     {
-        $s = preg_replace('/[\s\xc2\xa0]/', '', (string) $v);
-        return (int) round((float) preg_replace('/[^0-9.]/', '', str_replace(',', '.', $s)));
+        // On ne garde que les chiffres et les deux séparateurs possibles.
+        // Tout le reste disparaît : espaces, espaces insécables d'Excel,
+        // symboles monétaires, texte libre.
+        $s = preg_replace('/[^0-9.,]/u', '', (string) $v);
+
+        if ($s === '') {
+            return 0;
+        }
+
+        // C'est le DERNIER séparateur qui détermine la lecture du nombre.
+        $posPoint   = strrpos($s, '.');
+        $posVirgule = strrpos($s, ',');
+
+        if ($posPoint === false && $posVirgule === false) {
+            return (int) $s;
+        }
+
+        $pos = max((int) $posPoint, (int) $posVirgule);
+        $chiffresApres = strlen($s) - $pos - 1;
+
+        // Exactement 3 chiffres après le dernier séparateur : c'est un
+        // séparateur de MILLIERS. « 1.000.000 », « 1 000 000 » et « 1000000 »
+        // désignent le même million. Sans ce cas, « 250.000.000 » était lu
+        // comme 250 — une division par un million, sans aucune alerte.
+        if ($chiffresApres === 3) {
+            return (int) str_replace(['.', ','], '', $s);
+        }
+
+        // Sinon, le dernier séparateur est DÉCIMAL. Les montants sont des
+        // Ariary entiers (bigint non signé), donc on arrondit.
+        $partieEntiere = str_replace(['.', ','], '', substr($s, 0, $pos));
+        $partieDecimale = substr($s, $pos + 1);
+
+        return (int) round((float) ($partieEntiere . '.' . $partieDecimale));
     }
 
     protected function genererReference(): string

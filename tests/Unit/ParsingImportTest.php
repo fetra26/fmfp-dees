@@ -83,13 +83,20 @@ class ParsingImportTest extends TestCase
     public static function montants(): array
     {
         return [
-            'espaces normaux'       => ['1 000 000', 1000000],
-            'sans separateur'       => ['1000000',   1000000],
-            'prefixe devise'        => ['Ar 1 000',  1000],
-            'suffixe devise'        => ['1 000 Ar',  1000],
-            'decimale a la virgule' => ['12 345,67', 12346],
-            'vide'                  => ['',          0],
-            'texte'                 => ['neant',     0],
+            'espaces normaux'       => ['1 000 000',    1000000],
+            'sans separateur'       => ['1000000',      1000000],
+            'points comme milliers' => ['1.000.000',    1000000],
+            'points sur 5 chiffres' => ['25.000',       25000],
+            'gros montant a points' => ['250.000.000',  250000000],
+            'milliers courts'       => ['1.500',        1500],
+            'prefixe devise'        => ['Ar 1 000',     1000],
+            'suffixe devise'        => ['1 000 Ar',     1000],
+            'decimale a la virgule' => ['12 345,67',    12346],
+            'decimale simple'       => ['1,5',          2],
+            'points et decimale'    => ['1.234.567,89', 1234568],
+            'separateur final'      => ['1000.',        1000],
+            'vide'                  => ['',             0],
+            'texte'                 => ['neant',        0],
         ];
     }
 
@@ -99,6 +106,12 @@ class ParsingImportTest extends TestCase
     {
         // Les montants sont des Ariary entiers (bigint non signé en base) :
         // pas de décimales, pas de valeurs négatives.
+        //
+        // Le point est un séparateur de MILLIERS, pas un séparateur décimal :
+        // « 1.000.000 », « 1 000 000 » et « 1000000 » désignent le même
+        // million. C'est la règle confirmée par la DEES. Auparavant
+        // « 250.000.000 » était lu comme 250 — une division par un million,
+        // sans la moindre alerte.
         $this->assertSame($attendu, $this->appeler('parseMontant', $saisie));
     }
 
