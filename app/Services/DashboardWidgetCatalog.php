@@ -27,6 +27,11 @@ class DashboardWidgetCatalog
                     'label'       => 'Alertes (rouges/oranges/vertes)',
                     'description' => 'Compteurs des alertes de suivi',
                 ],
+                'projets_soumis' => [
+                    'class'       => \App\Filament\Widgets\ProjetsSoumisWidget::class,
+                    'label'       => 'Projets soumis — répartition',
+                    'description' => 'Notifié, engagé, refusé, annulé, clôturé — leur somme vaut le total soumis',
+                ],
                 'stats_overview' => [
                     'class'       => \App\Filament\Widgets\StatsOverviewWidget::class,
                     'label'       => 'Vue d\'ensemble',
