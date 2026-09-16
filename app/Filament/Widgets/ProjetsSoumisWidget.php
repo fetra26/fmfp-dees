@@ -41,7 +41,10 @@ class ProjetsSoumisWidget extends BaseWidget
         $total = $data['total'];
         $c     = $data['comptes'];
         $fmt   = fn (int $n) => number_format($n, 0, ',', ' ');
-        $part  = fn (int $n) => $total > 0 ? round($n * 100 / $total) . ' %' : '—';
+        // Sur une base vide, le pourcentage n'a pas de sens : on l'omet
+        // entièrement plutôt que d'afficher un tiret suivi du tiret
+        // séparateur, ce qui donnait « — — validé, jamais notifié ».
+        $part  = fn (int $n) => $total > 0 ? round($n * 100 / $total) . ' % — ' : '';
 
         $stats = [
             Stat::make('Projets soumis', $fmt($total))
@@ -51,42 +54,42 @@ class ProjetsSoumisWidget extends BaseWidget
                 ->color('primary'),
 
             Stat::make('Validé', $fmt($data['valide']))
-                ->description($part($data['valide']) . ' — dont ' . $fmt($data['notifie']) . ' notifiés')
+                ->description($part($data['valide']) . 'dont ' . $fmt($data['notifie']) . ' notifiés')
                 ->descriptionIcon('heroicon-m-check-circle')
                 ->color('success'),
 
             Stat::make('Engagé', $fmt($c['engage']))
-                ->description($part($c['engage']) . ' — J1 versé, formation en cours')
+                ->description($part($c['engage']) . 'J1 versé, formation en cours')
                 ->descriptionIcon('heroicon-m-play-circle')
                 ->color('warning'),
 
             Stat::make('Clôturé', $fmt($c['cloture']))
-                ->description($part($c['cloture']) . ' — J1 et J2 versés')
+                ->description($part($c['cloture']) . 'J1 et J2 versés')
                 ->descriptionIcon('heroicon-m-check-badge')
                 ->color('success'),
 
             Stat::make('Sans convention', $fmt($c['sans_convention']))
-                ->description($part($c['sans_convention']) . ' — aucun retour porteur')
+                ->description($part($c['sans_convention']) . 'aucun retour porteur')
                 ->descriptionIcon('heroicon-m-document-minus')
                 ->color('gray'),
 
             Stat::make('Non notifié', $fmt($c['non_notifie']))
-                ->description($part($c['non_notifie']) . ' — validé, jamais notifié')
+                ->description($part($c['non_notifie']) . 'validé, jamais notifié')
                 ->descriptionIcon('heroicon-m-bell-slash')
                 ->color('gray'),
 
             Stat::make('Refusé', $fmt($c['refuse']))
-                ->description($part($c['refuse']) . ' — CSP ou AFD')
+                ->description($part($c['refuse']) . 'CSP ou AFD')
                 ->descriptionIcon('heroicon-m-x-circle')
                 ->color('danger'),
 
             Stat::make('Non éligible', $fmt($c['non_eligible']))
-                ->description($part($c['non_eligible']))
+                ->description(rtrim($part($c['non_eligible']), ' —') ?: 'Aucun')
                 ->descriptionIcon('heroicon-m-no-symbol')
                 ->color('danger'),
 
             Stat::make('Incomplet', $fmt($c['incomplet']))
-                ->description($part($c['incomplet']) . ' — attente pièces')
+                ->description($part($c['incomplet']) . 'attente pièces')
                 ->descriptionIcon('heroicon-m-document-magnifying-glass')
                 ->color('warning'),
         ];
