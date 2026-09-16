@@ -1,0 +1,168 @@
+@import '../../../../vendor/filament/filament/resources/css/theme.css';
+
+@source '../../../../app/Filament/**/*';
+@source '../../../../resources/views/filament/**/*';
+
+/* ══════════════════════════════════════════════════════════════════════
+   Thème SEER — inspiration Vision UI Dashboard
+
+   Valeurs relevées directement dans la maquette Figma (fichier
+   E83Urky5C9WJPnFZH4uVw7), et non approximées à l'œil :
+     · carte   linear-gradient(164.45deg, rgba(6,11,38,.74), rgba(26,31,55,.5))
+     · flou    backdrop-filter: blur(60px)
+     · rayon   20px sur les cartes, 12px sur les encarts d'icône
+     · accents #0075FF bleu, #01B574 succès, #E31A1A erreur
+     · texte   #FFFFFF principal, #A0AEC0 secondaire
+
+   TOUT est cantonné à .dark : le mode clair reste celui de Filament,
+   lisible dans un bureau très éclairé. La bascule reste disponible dans
+   la barre supérieure, et personne n'est enfermé dans le thème sombre.
+   ══════════════════════════════════════════════════════════════════════ */
+
+:root {
+    --seer-bleu:          #0075FF;
+    --seer-succes:        #01B574;
+    --seer-erreur:        #E31A1A;
+    --seer-texte-attenue: #A0AEC0;
+
+    /* Fond de page : dégradé en trois temps, du bleu nuit au quasi-noir. */
+    --seer-fond: linear-gradient(159.02deg, #0F123B 14.25%, #090D2E 56.45%, #020515 86.14%);
+
+    /* Carte translucide : c'est ce dégradé, combiné au flou d'arrière-plan,
+       qui donne l'effet de verre dépoli caractéristique de la maquette. */
+    --seer-carte: linear-gradient(164.45deg, rgba(6, 11, 38, 0.74) 28.26%, rgba(26, 31, 55, 0.5) 91.2%);
+    --seer-bordure: rgba(255, 255, 255, 0.125);
+}
+
+/* ─── Fond général ─────────────────────────────────────────────────── */
+
+.dark body,
+.dark .fi-body,
+.dark .fi-layout {
+    background: var(--seer-fond);
+    background-attachment: fixed;
+}
+
+/* Filament pose ses propres fonds opaques sur ces conteneurs : on les
+   neutralise pour laisser voir le dégradé du body. */
+.dark .fi-main-ctn,
+.dark .fi-main,
+.dark .fi-page {
+    background: transparent;
+}
+
+/* ─── Barre latérale et barre supérieure ───────────────────────────── */
+
+.dark .fi-sidebar,
+.dark .fi-topbar > nav {
+    background: var(--seer-carte);
+    backdrop-filter: blur(60px);
+    border-color: var(--seer-bordure);
+}
+
+.dark .fi-sidebar-item-button {
+    border-radius: 12px;
+}
+
+/* L'élément actif porte le carré bleu de la maquette. */
+.dark .fi-sidebar-item-active .fi-sidebar-item-button {
+    background: rgba(0, 117, 255, 0.18);
+}
+
+.dark .fi-sidebar-item-active .fi-sidebar-item-icon {
+    color: var(--seer-bleu);
+}
+
+/* ─── Cartes ───────────────────────────────────────────────────────── */
+
+.dark .fi-section,
+.dark .fi-wi-stats-overview-stat,
+.dark .fi-ta-ctn {
+    background: var(--seer-carte);
+    backdrop-filter: blur(60px);
+    border: 1px solid var(--seer-bordure);
+    border-radius: 20px;
+    box-shadow: none;
+}
+
+/* ─── Compteurs ────────────────────────────────────────────────────── */
+
+.dark .fi-wi-stats-overview-stat-label {
+    color: var(--seer-texte-attenue);
+    font-size: 0.75rem;
+    font-weight: 500;
+}
+
+.dark .fi-wi-stats-overview-stat-value {
+    color: #fff;
+    font-weight: 700;
+    letter-spacing: -0.01em;
+}
+
+.dark .fi-wi-stats-overview-stat-description {
+    color: var(--seer-texte-attenue);
+}
+
+/* ─── Tableaux ─────────────────────────────────────────────────────── */
+
+.dark .fi-ta-header,
+.dark .fi-ta-header-cell,
+.dark .fi-ta-row,
+.dark .fi-ta-content {
+    background: transparent;
+    border-color: var(--seer-bordure);
+}
+
+.dark .fi-ta-row:hover {
+    background: rgba(255, 255, 255, 0.04);
+}
+
+.dark .fi-ta-header-cell-label {
+    color: var(--seer-texte-attenue);
+    text-transform: uppercase;
+    font-size: 0.7rem;
+    letter-spacing: 0.04em;
+}
+
+/* ─── Champs de saisie ─────────────────────────────────────────────── */
+
+.dark .fi-input-wrp,
+.dark .fi-dropdown-panel {
+    background: rgba(6, 11, 38, 0.6);
+    border-color: var(--seer-bordure);
+    border-radius: 12px;
+}
+
+/* ─── Boutons ──────────────────────────────────────────────────────── */
+
+.dark .fi-btn {
+    border-radius: 12px;
+}
+
+/* ─── Titres ───────────────────────────────────────────────────────── */
+
+.dark .fi-section-header-heading,
+.dark .fi-header-heading {
+    color: #fff;
+    font-weight: 700;
+}
+
+.dark .fi-section-header-description {
+    color: var(--seer-texte-attenue);
+}
+
+/* ─── Accessibilité ────────────────────────────────────────────────── */
+
+/* Le flou d'arrière-plan est coûteux à rendre et gêne certaines personnes.
+   On le retire quand le système signale une préférence pour moins
+   d'effets, en compensant par un fond plus opaque pour garder le contraste. */
+@media (prefers-reduced-motion: reduce) {
+    .dark .fi-section,
+    .dark .fi-wi-stats-overview-stat,
+    .dark .fi-ta-ctn,
+    .dark .fi-sidebar,
+    .dark .fi-topbar > nav {
+        backdrop-filter: none;
+        background: rgba(6, 11, 38, 0.92);
+    }
+}
