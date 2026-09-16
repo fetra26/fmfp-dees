@@ -2,6 +2,7 @@
 
 namespace Database\Seeders;
 
+use App\Models\ImportMapping;
 use Illuminate\Database\Seeder;
 use Illuminate\Support\Facades\DB;
 
@@ -67,27 +68,65 @@ class ReferentielsSeeder extends Seeder
             ]);
         }
 
-        // ─── SECTEURS ─────────────────────────────────────────────
+        // ─── SECTEURS (nomenclature officielle FMFP — 11 secteurs) ────
+        // Liste FERMÉE : l'import ne doit jamais en créer d'autres, sous peine
+        // de refragmenter les statistiques du tableau de bord, qui agrège par
+        // libellé. Toute graphie inattendue passe par le wizard de préflight.
+        //
+        // Le code est en UPPER_SNAKE_CASE : normalisé, il rejoint son propre
+        // libellé (MULTI_EDUCATION et « Multi éducation » donnent tous deux
+        // MULTIEDUCATION), ce qui fait reconnaître automatiquement la plupart
+        // des graphies du fichier.
         $secteurs = [
-            ['code' => 'AGR', 'libelle' => 'Agriculture / Élevage / Pêche'],
-            ['code' => 'ART', 'libelle' => 'Artisanat / Transformation'],
-            ['code' => 'BTP', 'libelle' => 'BTP / Génie civil'],
-            ['code' => 'COM', 'libelle' => 'Commerce / Distribution'],
-            ['code' => 'IND', 'libelle' => 'Industrie / Manufacture'],
-            ['code' => 'NUM', 'libelle' => 'Numérique / TIC'],
-            ['code' => 'SAN', 'libelle' => 'Santé / Social'],
-            ['code' => 'TOU', 'libelle' => 'Tourisme / Hôtellerie'],
-            ['code' => 'TRA', 'libelle' => 'Transport / Logistique'],
-            ['code' => 'ENV', 'libelle' => 'Environnement / Énergie'],
-            ['code' => 'EDU', 'libelle' => 'Éducation / Formation'],
-            ['code' => 'EQU', 'libelle' => 'Équité'],
-            ['code' => 'AUT', 'libelle' => 'Autres'],
+            ['code' => 'THA',             'libelle' => 'Textile / Habillement et Accessoires'],
+            ['code' => 'THR',             'libelle' => 'Tourisme / Hôtellerie / Restauration'],
+            ['code' => 'TIC',             'libelle' => "Technologies de l'Information et de la Communication"],
+            ['code' => 'BTP_RS',          'libelle' => 'Bâtiment / Travaux Publics / Ressources Stratégiques'],
+            ['code' => 'DR',              'libelle' => 'Développement Rural'],
+            ['code' => 'MULTI_EDUCATION', 'libelle' => 'Multi éducation'],
+            ['code' => 'MULTI_SANTE',     'libelle' => 'Multi santé'],
+            ['code' => 'MULTI_TRANSPORT', 'libelle' => 'Multi transport'],
+            ['code' => 'MULTI_INDUSTRIE', 'libelle' => 'Multi industrie'],
+            ['code' => 'MULTI_COMMERCE',  'libelle' => 'Multi commerce'],
+            ['code' => 'MULTI_AUTRE',     'libelle' => 'Multi autre'],
         ];
         foreach ($secteurs as $s) {
             DB::table('secteur')->updateOrInsert(['code' => $s['code']], array_merge($s, [
                 'created_at' => now(), 'updated_at' => now(),
             ]));
         }
+
+        // ─── Retrait des secteurs hors nomenclature ───────────────
+        // Les anciens secteurs génériques (AGR, ART, COM…) et ceux inventés
+        // par les imports successifs faussaient la répartition. On ne supprime
+        // QUE ceux qu'aucun projet ni porteur ne référence : un secteur encore
+        // utilisé est conservé et signalé, à rattacher manuellement.
+        $codesOfficiels = array_column($secteurs, 'code');
+        $horsNomenclature = DB::table('secteur')->whereNotIn('code', $codesOfficiels)->get(['id', 'code', 'libelle']);
+        $supprimes = 0;
+        $conserves = [];
+
+        foreach ($horsNomenclature as $obsolete) {
+            $utilise = DB::table('projet')->where('secteur_id', $obsolete->id)->exists()
+                || DB::table('porteur')->where('secteur_id', $obsolete->id)->exists();
+
+            if ($utilise) {
+                $conserves[] = $obsolete->libelle;
+                continue;
+            }
+
+            DB::table('secteur')->where('id', $obsolete->id)->delete();
+            $supprimes++;
+        }
+
+        if ($supprimes > 0) {
+            $this->command->info("  ↳ {$supprimes} secteur(s) hors nomenclature supprimé(s).");
+        }
+        if ($conserves !== []) {
+            $this->command->warn('  ↳ Conservés car encore référencés : ' . implode(', ', $conserves));
+        }
+
+        $this->seedAliasSecteurs();
 
         // ─── STATUTS PROJET (vrais statuts DEES) ──────────────────
         $statuts = [
@@ -151,5 +190,75 @@ class ReferentielsSeeder extends Seeder
         }
 
         $this->command->info('✔ Référentiels seedés (guichets DEES, régions, secteurs, statuts DEES, types DANO).');
+    }
+
+    /**
+     * Alias de rapprochement des secteurs.
+     *
+     * Les fichiers de la DEES nomment souvent un secteur par un seul mot, là où
+     * la nomenclature officielle en fait un « Multi » : « SANTE » désigne
+     * « Multi santé », « BTP » désigne « BTP/RS ». Sans ces alias, chaque
+     * variante repartirait en valeur inconnue à traiter à la main.
+     *
+     * Ces correspondances alimentent import_mapping, la mémoire que consultent
+     * déjà le PreflightScanner et l'import. Un arbitrage rendu ici n'est donc
+     * plus jamais redemandé.
+     *
+     * Note : les graphies qui ne diffèrent que par la casse, les accents, les
+     * espaces ou les séparateurs n'ont PAS besoin d'alias — la normalisation
+     * les ramène d'elle-même au code (« btp-rs », « BTP / RS » et « BTP_RS »
+     * donnent tous BTPRS).
+     */
+    private function seedAliasSecteurs(): void
+    {
+        $alias = [
+            // ── Mot seul → le « Multi » correspondant (règle donnée par la DEES)
+            'MULTI_AUTRE'     => ['AUTRE', 'AUTRES', 'DIVERS'],
+            'MULTI_SANTE'     => ['SANTE', 'SANTE SOCIAL', 'SANITAIRE'],
+            'MULTI_EDUCATION' => ['EDUCATION', 'EDUCATION FORMATION', 'ENSEIGNEMENT', 'FORMATION'],
+            'MULTI_TRANSPORT' => ['TRANSPORT', 'TRANSPORT LOGISTIQUE', 'LOGISTIQUE'],
+            'MULTI_INDUSTRIE' => ['INDUSTRIE', 'INDUSTRIE MANUFACTURE', 'MANUFACTURE'],
+            'MULTI_COMMERCE'  => ['COMMERCE', 'COMMERCE DISTRIBUTION', 'DISTRIBUTION'],
+
+            // ── Forme abrégée → secteur complet
+            'BTP_RS'          => ['BTP', 'BATIMENT', 'TRAVAUX PUBLICS', 'GENIE CIVIL', 'RESSOURCES STRATEGIQUES'],
+            'THA'             => ['TEXTILE', 'HABILLEMENT', 'TEXTILE HABILLEMENT', 'ACCESSOIRES'],
+            'THR'             => ['TOURISME', 'HOTELLERIE', 'RESTAURATION', 'TOURISME HOTELLERIE'],
+            'TIC'             => ['NUMERIQUE', 'INFORMATIQUE', 'TELECOMMUNICATION', 'TECHNOLOGIE'],
+            'DR'              => ['RURAL', 'DEVELOPPEMENT RURAL', 'AGRICULTURE', 'ELEVAGE', 'PECHE', 'AGRICULTURE ELEVAGE PECHE'],
+        ];
+
+        $secteurs = DB::table('secteur')->pluck('id', 'code');
+        $crees = 0;
+
+        foreach ($alias as $code => $variantes) {
+            if (! isset($secteurs[$code])) {
+                continue;
+            }
+
+            $libelle = DB::table('secteur')->where('code', $code)->value('libelle');
+
+            foreach ($variantes as $variante) {
+                $normalisee = ImportMapping::normaliser($variante);
+                if ($normalisee === null) {
+                    continue;
+                }
+
+                DB::table('import_mapping')->updateOrInsert(
+                    ['referentiel' => 'secteur', 'valeur_saisie_normalisee' => $normalisee],
+                    [
+                        'valeur_saisie' => $variante,
+                        'action'        => 'map',
+                        'target_id'     => $secteurs[$code],
+                        'target_label'  => $libelle,
+                        'created_at'    => now(),
+                        'updated_at'    => now(),
+                    ]
+                );
+                $crees++;
+            }
+        }
+
+        $this->command->info("✔ {$crees} alias de secteurs enregistrés (SANTE → Multi santé, BTP → BTP/RS, …).");
     }
 }

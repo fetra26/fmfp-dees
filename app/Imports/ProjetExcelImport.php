@@ -58,6 +58,18 @@ class ProjetExcelImport implements ToCollection, WithStartRow, WithChunkReading
     protected array $cacheGuichets = [];
     protected array $cacheVagues = [];
     protected array $cacheSecteurs = [];
+
+    /** L'index des secteurs officiels n'est construit qu'une fois par import. */
+    protected bool $cacheSecteursCharge = false;
+
+    /**
+     * Libellés de secteur rencontrés dans le fichier sans correspondance dans
+     * la nomenclature FMFP. Listés une seule fois chacun dans le rapport
+     * d'import, pour que la DEES sache quoi rattacher.
+     *
+     * @var string[]
+     */
+    public array $secteursInconnus = [];
     protected array $cacheRegions = [];
     protected array $cacheStatuts = [];
     protected array $cachePorteurs = [];
@@ -1011,17 +1023,43 @@ class ProjetExcelImport implements ToCollection, WithStartRow, WithChunkReading
         if ($mappe instanceof Secteur) return $mappe;
         if ($mappe === 'ignore') return null;
 
-        $code = Str::limit(mb_strtoupper(preg_replace('/[^A-Z0-9]/', '', mb_strtoupper($texte))), 20, '');
-        if (blank($code)) return null;
+        $normalisee = \App\Models\ImportMapping::normaliser($texte);
+        if ($normalisee === null) return null;
 
-        if (isset($this->cacheSecteurs[$code])) {
-            return $this->cacheSecteurs[$code];
+        // Index normalisé de la nomenclature officielle, construit une seule
+        // fois. On indexe le code ET le libellé : « BTP/RS », « BTP_RS » et
+        // « Bâtiment / Travaux Publics / Ressources Stratégiques » mènent au
+        // même secteur une fois normalisés.
+        if (! $this->cacheSecteursCharge) {
+            foreach (Secteur::all() as $secteur) {
+                foreach ([$secteur->code, $secteur->libelle] as $forme) {
+                    $cle = \App\Models\ImportMapping::normaliser((string) $forme);
+                    if ($cle !== null && ! isset($this->cacheSecteurs[$cle])) {
+                        $this->cacheSecteurs[$cle] = $secteur;
+                    }
+                }
+            }
+            $this->cacheSecteursCharge = true;
         }
 
-        return $this->cacheSecteurs[$code] = Secteur::firstOrCreate(
-            ['code' => $code],
-            ['libelle' => Str::limit(\App\Models\ImportMapping::formaterLibelle($texte) ?: $texte, 150, '')]
-        );
+        if (isset($this->cacheSecteurs[$normalisee])) {
+            return $this->cacheSecteurs[$normalisee];
+        }
+
+        // Nomenclature FERMÉE : un fichier ne crée JAMAIS de secteur.
+        // Auparavant, un firstOrCreate inventait une entrée par graphie — d'où
+        // 54 secteurs pour 11 réels, et une répartition éclatée dans le tableau
+        // de bord, qui agrège par libellé.
+        //
+        // Le projet entre sans secteur : la DEES le complétera depuis
+        // l'interface, ou enregistrera un alias via le wizard de préflight, qui
+        // vaudra alors pour tous les imports suivants.
+        if (! in_array($texte, $this->secteursInconnus, true)) {
+            $this->secteursInconnus[] = $texte;
+            $this->errors[] = "Secteur « {$texte} » hors nomenclature FMFP : projet importé sans secteur.";
+        }
+
+        return null;
     }
 
     protected function resoudreStatut(string $texte): ?StatutProjet

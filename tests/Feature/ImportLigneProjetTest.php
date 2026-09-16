@@ -28,6 +28,16 @@ class ImportLigneProjetTest extends TestCase
 {
     use RefreshDatabase;
 
+    protected function setUp(): void
+    {
+        parent::setUp();
+
+        // Les référentiels officiels doivent exister, comme en exploitation :
+        // la nomenclature des secteurs étant fermée, un import sur une base
+        // sans référentiels ne rattacherait aucun secteur.
+        $this->seed(\Database\Seeders\ReferentielsSeeder::class);
+    }
+
     /**
      * Construit une ligne Excel à partir d'une carte « lettre de colonne => valeur ».
      *
@@ -60,7 +70,7 @@ class ImportLigneProjetTest extends TestCase
     private function ligneComplete(): array
     {
         return [
-            'A'  => 'AGROALIMENTAIRE',
+            'A'  => 'THA',
             'B'  => 'VAGUE 1',
             'C'  => 'GUICHET A',
             'D'  => 'PROJ-001',
@@ -129,13 +139,18 @@ class ImportLigneProjetTest extends TestCase
     }
 
     #[Test]
-    public function les_referentiels_absents_sont_crees_a_la_volee(): void
+    public function les_referentiels_sont_rattaches_au_projet(): void
     {
         $this->importer($this->ligneComplete());
 
         $projet = Projet::where('reference', 'PROJ-001')->first();
 
+        // Le secteur vient de la nomenclature FMFP, fermée : « THA » y existe.
         $this->assertNotNull($projet->secteur_id, 'colonne A');
+
+        // Vague, guichet et statut restent créés à la volée : les vagues sont
+        // des campagnes numérotées qui apparaissent légitimement au fil du
+        // temps, une liste fermée les bloquerait.
         $this->assertNotNull($projet->vague_id,   'colonne B');
         $this->assertNotNull($projet->guichet_id, 'colonne C');
         $this->assertNotNull($projet->statut_projet_id, 'colonne AH');
