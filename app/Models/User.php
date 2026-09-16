@@ -101,17 +101,6 @@ class User extends Authenticatable
         return $this->name ?? $this->email;
     }
 
-    public function projetsEvalues()
-    {
-        return $this->belongsToMany(
-            Projet::class,
-            'project_evaluator',
-            'evaluateur_id',
-            'projet_id'
-        )->withPivot(['assigne_at', 'complete_at', 'notes'])
-         ->withTimestamps();
-    }
-
     public function scopeActive($query)
     {
         return $query->where('is_active', true);
