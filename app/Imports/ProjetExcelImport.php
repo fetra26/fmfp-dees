@@ -1238,14 +1238,46 @@ class ProjetExcelImport implements ToCollection, WithStartRow, WithChunkReading
 
     protected function parseDate(string $valeur): ?string
     {
-        if (blank(trim($valeur))) return null;
+        $valeur = trim($valeur);
+        if (blank($valeur)) return null;
+
         try {
-            if (is_numeric(trim($valeur))) {
+            // Excel stocke normalement les dates en numéro de série : c'est le
+            // cas le plus fiable, on le traite en premier.
+            if (is_numeric($valeur)) {
                 return \PhpOffice\PhpSpreadsheet\Shared\Date::excelToDateTimeObject(
-                    (float) trim($valeur)
+                    (float) $valeur
                 )->format('Y-m-d');
             }
-            return Carbon::parse(trim($valeur))->toDateString();
+
+            // Cellule au format TEXTE : les fichiers de la DEES sont en français,
+            // donc jj/mm/aaaa. Sans ce traitement, Carbon::parse() applique la
+            // convention américaine m/d/Y et lit « 01/02/2026 » comme le
+            // 2 janvier au lieu du 1er février — silencieusement. Pire, dès que
+            // le jour dépasse 12 (« 15/06/2026 »), le mois est invalide et la
+            // date devient null, ce qui exclut définitivement le projet du
+            // job d'alertes, qui filtre sur whereNotNull('date_fin').
+            if (preg_match('#^(\d{1,2})/(\d{1,2})/(\d{4})$#', $valeur, $m)) {
+                $date = \Carbon\Carbon::createFromFormat('!d/m/Y', $valeur);
+
+                // createFromFormat déborde silencieusement (31/02 -> 3 mars) :
+                // on vérifie que le jour et le mois lus sont bien ceux saisis.
+                if ($date && (int) $m[1] === $date->day && (int) $m[2] === $date->month) {
+                    return $date->toDateString();
+                }
+
+                return null; // date française syntaxiquement correcte mais inexistante
+            }
+
+            // strtotime() renvoie false en silence sur une valeur non datée, là
+            // où Carbon::parse() émet d'abord un warning PHP avant de lever son
+            // exception — ce qui polluerait les journaux de production à chaque
+            // cellule contenant « n/a », un tiret ou du texte libre.
+            if (strtotime($valeur) === false) {
+                return null;
+            }
+
+            return Carbon::parse($valeur)->toDateString();
         } catch (\Exception) {
             return null;
         }
