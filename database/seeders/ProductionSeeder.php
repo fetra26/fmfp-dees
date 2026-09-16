@@ -35,7 +35,7 @@ class ProductionSeeder extends Seeder
             'name'              => 'Super Admin',
             'email'             => $email,
             'password'          => Hash::make($password),
-            'organization_type' => 'interne',
+            'organization_type' => 'internal',
             'is_active'         => true,
             'email_verified_at' => now(),
         ]);
