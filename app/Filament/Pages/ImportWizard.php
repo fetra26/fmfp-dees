@@ -246,28 +246,17 @@ class ImportWizard extends Page
 
                 // 1) Si action = create → créer le nouveau référentiel avec libellé SEER (UPPER_SNAKE_CASE)
                 if ($action === 'create') {
-                    // ⚠ VERROUS DE NOMENCLATURE
-                    // Régions (23 officielles) et secteurs (11 officiels FMFP) sont des
-                    // listes FERMÉES : on n'en crée jamais depuis un fichier. Sans ce
-                    // verrou, le référentiel se repollue — 54 secteurs avaient été
-                    // constatés pour 11 réels — et la répartition du tableau de bord,
-                    // qui agrège par libellé, éclate en parts fantômes.
-                    // Le projet est importé sans la valeur : la DEES complète ensuite.
-                    $listesFermees = [
-                        'region'  => ['f', "n'est pas une des 23 régions officielles"],
-                        'secteur' => ['m', "n'est pas un des 11 secteurs officiels FMFP"],
-                    ];
-
-                    if (isset($listesFermees[$ref])) {
-                        [$genre, $motif] = $listesFermees[$ref];
-
-                        Notification::make()
-                            ->title(\Illuminate\Support\Str::ucfirst($ref) . ' ignor' . ($genre === 'f' ? 'ée' : 'é'))
-                            ->body("« {$valeurSaisie} » {$motif} — projet importé sans {$ref}.")
-                            ->warning()
-                            ->send();
-                        continue;
-                    }
+                    // Les nomenclatures officielles — 11 secteurs FMFP, 23 régions —
+                    // restent fermées À L'IMPORT AUTOMATIQUE : resoudreSecteur() et
+                    // resoudreRegion() ne créent jamais rien, ce qui évite les 54
+                    // secteurs inventés à chaque graphie.
+                    //
+                    // ICI, c'est différent : un humain a délibérément choisi « Créer ».
+                    // Le cas se présente vraiment — « Vatovavy Fitovinany » désigne la
+                    // région d'avant la scission de 2021, indispensable pour reprendre
+                    // les données historiques. On crée donc, en signalant que la valeur
+                    // sort de la nomenclature pour qu'elle ne passe pas inaperçue.
+                    $nomenclaturesOfficielles = ['region', 'secteur'];
 
                     $labelSeer = \App\Models\ImportMapping::formaterLibelle($decision['target_label'] ?? $valeurSaisie)
                         ?? $decision['target_label']
@@ -283,6 +272,14 @@ class ImportWizard extends Page
                         ['libelle' => $labelSeer],
                         ['code' => $this->genererCodeReferentiel($modelClass, $labelSeer, $ref === 'statut' ? 30 : 20)]
                     );
+                    if (in_array($ref, $nomenclaturesOfficielles, true) && $created->wasRecentlyCreated) {
+                        Notification::make()
+                            ->title(\Illuminate\Support\Str::ucfirst($ref) . ' créé hors nomenclature')
+                            ->body("« {$labelSeer} » ne figure pas dans la liste officielle. À vérifier par la DEES, qui pourra le rattacher ou le renommer depuis les Référentiels.")
+                            ->warning()
+                            ->send();
+                    }
+
                     $decision['target_id']    = $created->id;
                     $decision['target_label'] = $labelSeer;
                 }

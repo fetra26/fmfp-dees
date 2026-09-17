@@ -159,10 +159,25 @@ class ProjetExcelImport implements ToCollection, WithStartRow, WithChunkReading
         $intitule   = trim((string) $this->cell($row, 'O'));                    // col O (Intitulé)
         $refProjet  = trim((string) $this->cell($row, 'D'));                    // col D
 
-        // Ligne complètement vide (toutes colonnes clés vides) → skip silencieux
-        // (évite d'importer les lignes finales blanches de l'Excel)
-        if (blank($nomPorteur) && blank($intitule) && blank($refProjet)
-            && blank($this->cell($row, 'E')) && blank($this->cell($row, 'A'))) {
+        // ── Une ligne n'est importable que si elle IDENTIFIE un projet ──
+        //
+        // Quatre colonnes font identité : référence projet (D), référence
+        // convention (E), porteur (F) et intitulé (O). Sans aucune des quatre,
+        // il n'y a rien à importer, et la ligne est ignorée en silence.
+        //
+        // Le secteur (A) ne compte volontairement PAS comme identité : les bas
+        // de tableau Excel portent souvent une valeur résiduelle dans une
+        // colonne de référentiel, sans le moindre projet derrière. L'inclure
+        // fabriquait des projets fantômes nommés A_REMPLIR_L<n> qu'il fallait
+        // ensuite retrouver et supprimer à la main.
+        $identifiants = [
+            $refProjet,
+            trim((string) $this->cell($row, 'E')),
+            $nomPorteur,
+            $intitule,
+        ];
+
+        if (collect($identifiants)->every(fn ($valeur) => blank($valeur))) {
             $this->skipped++;
             return;
         }

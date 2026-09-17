@@ -60,6 +60,18 @@ class ReferentielsSeeder extends Seeder
             // Ex-province Antsiranana
             ['code' => 'R22', 'libelle' => 'Diana',             'chef_lieu' => 'Antsiranana'],
             ['code' => 'R23', 'libelle' => 'Sava',              'chef_lieu' => 'Sambava'],
+
+            // ── Région HISTORIQUE, antérieure au découpage actuel ──────────
+            // Vatovavy-Fitovinany a été scindée en 2021 en Vatovavy (R07) et
+            // Fitovinany (R08). Les fichiers de la DEES antérieurs à cette date
+            // portent encore l'ancien nom : sans cette entrée, les projets
+            // concernés seraient importés sans région et disparaîtraient des
+            // statistiques régionales.
+            //
+            // Le code R07_08 rappelle qu'elle recouvre les deux régions issues
+            // de la scission. La DEES pourra reventiler ces projets vers l'une
+            // ou l'autre quand la commune permettra de trancher.
+            ['code' => 'R07_08', 'libelle' => 'Vatovavy Fitovinany', 'chef_lieu' => 'Manakara'],
         ];
         foreach ($regions as $r) {
             DB::table('region')->updateOrInsert(['code' => $r['code']], [

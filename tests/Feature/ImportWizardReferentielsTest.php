@@ -106,17 +106,24 @@ class ImportWizardReferentielsTest extends TestCase
     }
 
     #[Test]
-    public function la_nomenclature_des_secteurs_reste_fermee(): void
+    public function le_seeder_charge_les_onze_secteurs_officiels(): void
     {
-        // Le seeder charge les 11 secteurs officiels FMFP. L'assistant ne doit
-        // jamais en créer un douzième depuis un fichier : sinon le référentiel
-        // se repollue et la répartition du tableau de bord se fragmente.
         $this->assertSame(11, Secteur::count());
     }
 
     #[Test]
-    public function les_regions_officielles_restent_au_nombre_de_vingt_trois(): void
+    public function les_vingt_trois_regions_officielles_sont_completees_par_la_region_historique(): void
     {
-        $this->assertSame(23, Region::count());
+        // 23 régions officielles, plus Vatovavy Fitovinany (R07_08), scindée en
+        // 2021 mais encore présente dans les fichiers antérieurs de la DEES.
+        $this->assertSame(24, Region::count());
+        $this->assertNotNull(Region::where('code', 'R07_08')->first());
+    }
+
+    #[Test]
+    public function la_region_historique_ne_masque_pas_les_deux_regions_issues_de_la_scission(): void
+    {
+        $this->assertSame('Vatovavy',   Region::where('code', 'R07')->value('libelle'));
+        $this->assertSame('Fitovinany', Region::where('code', 'R08')->value('libelle'));
     }
 }

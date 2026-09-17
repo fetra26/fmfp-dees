@@ -168,6 +168,40 @@ class ImportLigneProjetTest extends TestCase
     }
 
     #[Test]
+    public function une_ligne_de_bas_de_tableau_sans_identite_est_ignoree(): void
+    {
+        // Les classeurs de la DEES se terminent souvent par une ligne portant
+        // une valeur résiduelle dans une colonne de référentiel, sans le moindre
+        // projet derrière. Auparavant, le secteur seul suffisait à fabriquer un
+        // projet fantôme nommé A_REMPLIR_L<n>.
+        $import = $this->importer(['A' => 'THA']);
+
+        $this->assertSame(1, $import->skipped);
+        $this->assertSame(0, Projet::count());
+    }
+
+    #[Test]
+    public function une_ligne_portant_un_seul_identifiant_est_bien_importee(): void
+    {
+        // Référence projet, référence convention, porteur ou intitulé : l'un des
+        // quatre suffit à constituer un projet, quitte à le compléter ensuite.
+        //
+        // Les quatre lignes partent dans le MÊME import : deux lignes sans
+        // référence importées séparément recevraient toutes deux A_REMPLIR_L2,
+        // donc la même référence, et seraient fusionnées — ce qui est le
+        // comportement voulu quand on réimporte un fichier corrigé.
+        $import = $this->importer(
+            ['D' => 'PROJ-001'],
+            ['E' => 'CONV-1'],
+            ['F' => 'STELLARIX'],
+            ['O' => 'Formation en soudure'],
+        );
+
+        $this->assertSame(0, $import->skipped, 'Aucune de ces lignes ne doit être ignorée.');
+        $this->assertSame(4, Projet::count());
+    }
+
+    #[Test]
     public function une_ligne_entierement_vide_est_ignoree_sans_bruit(): void
     {
         // Les classeurs de la DEES se terminent souvent par des lignes blanches.
