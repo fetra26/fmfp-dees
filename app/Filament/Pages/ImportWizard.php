@@ -242,6 +242,11 @@ class ImportWizard extends Page
             'messages'           => array_slice($import->errors, 0, 50),
         ];
 
+        // Sans cela, le tableau de bord afficherait les chiffres d'avant
+        // l'import pendant les 5 minutes de vie du cache des widgets — donnant
+        // l'impression que rien ne s'est passé.
+        \App\Services\CacheTableauDeBord::vider();
+
         $this->etape = 'done';
     }
 
