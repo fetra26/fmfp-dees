@@ -644,8 +644,19 @@ class ProjetExcelImport implements ToCollection, WithStartRow, WithChunkReading
         // Retourne un tableau [total => [100,100,100], h => [60,55,50], ...]
         $valeursParChamp = [];
         $reparteesAuto = false;   // flag pour savoir si on a fait la répartition auto
+        $formulesRencontrees = [];
         foreach (['total', 'h', 'f', 'jeunes', 'fpe', 'cadres'] as $champ) {
             $raw = $rawValeurs[$champ] ?? 0;
+
+            // Une formule non évaluée n'est ni un nombre ni une liste de lieux :
+            // la découper sur ses virgules produisait des fragments absurdes
+            // (« Tableau23 » → 23) qui atterrissaient en base comme effectifs.
+            if ($this->estFormule($raw)) {
+                $valeursParChamp[$champ] = array_fill(0, $nbLieux, 0);
+                $formulesRencontrees[] = $champ;
+                continue;
+            }
+
             [$parts, $sep] = $this->splitMultiValue((string) $raw);
             $nbParts = count($parts);
 
@@ -681,6 +692,28 @@ class ProjetExcelImport implements ToCollection, WithStartRow, WithChunkReading
                 $vals = array_pad($vals, $nbLieux, 0);
                 $valeursParChamp[$champ] = array_slice($vals, 0, $nbLieux);
             }
+        }
+
+        // ─── 2bis) Repli du total quand il venait d'une formule ───
+        // Dans les classeurs de la DEES, « Nb bénéf total » est un
+        // =SUM(Homme, Femme). La formule n'étant pas évaluée à la lecture, on la
+        // recalcule nous-mêmes plutôt que de laisser un total à zéro face à des
+        // effectifs renseignés — ce qui aurait donné des répartitions par sexe
+        // supérieures au total dans le tableau de bord.
+        if (in_array('total', $formulesRencontrees, true)) {
+            foreach ($valeursParChamp['total'] as $i => $valeur) {
+                if ($valeur === 0) {
+                    $valeursParChamp['total'][$i] =
+                        ($valeursParChamp['h'][$i] ?? 0) + ($valeursParChamp['f'][$i] ?? 0);
+                }
+            }
+        }
+
+        if ($formulesRencontrees !== []) {
+            $this->errors[] = 'Projet ' . ($pp->reference_convention ?: $pp->id)
+                . ' : colonne(s) ' . implode(', ', array_unique($formulesRencontrees))
+                . ' contenant une formule Excel non calculée'
+                . (in_array('total', $formulesRencontrees, true) ? ' — total recalculé (H + F).' : '.');
         }
 
         // ─── 3) Skip si toutes valeurs à 0 ───
@@ -1336,13 +1369,35 @@ class ProjetExcelImport implements ToCollection, WithStartRow, WithChunkReading
         }
     }
 
+    /**
+     * Une cellule contenant une FORMULE non évaluée n'est pas un nombre.
+     *
+     * Les classeurs de la DEES calculent certains totaux par formule
+     * (« =SUM(Tableau23[[#This Row],[Homme]],...) »). Le lecteur renvoie alors
+     * le texte de la formule, et non son résultat. Sans cette garde, parseInt
+     * en extrayait les chiffres du nom de table : « Tableau23 » devenait 23,
+     * et ce 23 se retrouvait comme nombre de bénéficiaires de chaque projet.
+     */
+    protected function estFormule(mixed $v): bool
+    {
+        return is_string($v) && str_starts_with(ltrim($v), '=');
+    }
+
     protected function parseInt(mixed $v): int
     {
+        if ($this->estFormule($v)) {
+            return 0;
+        }
+
         return (int) preg_replace('/[^0-9]/', '', (string) $v);
     }
 
     protected function parseMontant(mixed $v): int
     {
+        if ($this->estFormule($v)) {
+            return 0;
+        }
+
         // On ne garde que les chiffres et les deux séparateurs possibles.
         // Tout le reste disparaît : espaces, espaces insécables d'Excel,
         // symboles monétaires, texte libre.
