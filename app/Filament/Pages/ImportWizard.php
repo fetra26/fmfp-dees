@@ -246,12 +246,24 @@ class ImportWizard extends Page
 
                 // 1) Si action = create → créer le nouveau référentiel avec libellé SEER (UPPER_SNAKE_CASE)
                 if ($action === 'create') {
-                    // ⚠ VERROU RÉGION : les 23 régions sont officielles, ON NE CRÉE JAMAIS de nouvelle région
-                    // Si l'utilisateur choisit "créer" pour une région, on ignore silencieusement
-                    if ($ref === 'region') {
+                    // ⚠ VERROUS DE NOMENCLATURE
+                    // Régions (23 officielles) et secteurs (11 officiels FMFP) sont des
+                    // listes FERMÉES : on n'en crée jamais depuis un fichier. Sans ce
+                    // verrou, le référentiel se repollue — 54 secteurs avaient été
+                    // constatés pour 11 réels — et la répartition du tableau de bord,
+                    // qui agrège par libellé, éclate en parts fantômes.
+                    // Le projet est importé sans la valeur : la DEES complète ensuite.
+                    $listesFermees = [
+                        'region'  => ['f', "n'est pas une des 23 régions officielles"],
+                        'secteur' => ['m', "n'est pas un des 11 secteurs officiels FMFP"],
+                    ];
+
+                    if (isset($listesFermees[$ref])) {
+                        [$genre, $motif] = $listesFermees[$ref];
+
                         Notification::make()
-                            ->title('Région ignorée')
-                            ->body("« {$valeurSaisie} » n'est pas une des 23 régions officielles — projet importé sans région.")
+                            ->title(\Illuminate\Support\Str::ucfirst($ref) . ' ignor' . ($genre === 'f' ? 'ée' : 'é'))
+                            ->body("« {$valeurSaisie} » {$motif} — projet importé sans {$ref}.")
                             ->warning()
                             ->send();
                         continue;
@@ -262,14 +274,15 @@ class ImportWizard extends Page
                         ?? $valeurSaisie;
                     // Libellé référentiel : varchar(150) → truncate impératif
                     $labelSeer = \Illuminate\Support\Str::limit($labelSeer, 150, '');
-                    if ($ref === 'statut') {
-                        $created = $modelClass::firstOrCreate(
-                            ['libelle' => $labelSeer],
-                            ['code' => \Illuminate\Support\Str::limit(\Illuminate\Support\Str::slug($labelSeer, '_'), 30, '')]
-                        );
-                    } else {
-                        $created = $modelClass::firstOrCreate(['libelle' => $labelSeer]);
-                    }
+                    // Les cinq tables de référentiel portent un code NOT NULL, sans
+                    // valeur par défaut et UNIQUE. Seul « statut » en recevait un :
+                    // créer une vague ou un guichet échouait donc sur
+                    // « Field 'code' doesn't have a default value ». On le génère
+                    // désormais pour tous, en respectant la longueur de colonne.
+                    $created = $modelClass::firstOrCreate(
+                        ['libelle' => $labelSeer],
+                        ['code' => $this->genererCodeReferentiel($modelClass, $labelSeer, $ref === 'statut' ? 30 : 20)]
+                    );
                     $decision['target_id']    = $created->id;
                     $decision['target_label'] = $labelSeer;
                 }
@@ -286,6 +299,31 @@ class ImportWizard extends Page
                 }
             }
         }
+    }
+
+    /**
+     * Code unique dérivé du libellé d'un référentiel.
+     *
+     * La colonne code est NOT NULL, UNIQUE, et courte : 20 caractères pour
+     * secteur, vague et guichet, 30 pour les statuts. Deux libellés distincts
+     * pouvant produire le même code une fois tronqués, on suffixe jusqu'à
+     * trouver une place libre plutôt que de laisser MySQL rejeter l'insertion.
+     */
+    private function genererCodeReferentiel(string $modelClass, string $libelle, int $longueurMax): string
+    {
+        $base = \Illuminate\Support\Str::upper(\Illuminate\Support\Str::slug($libelle, '_'));
+        $base = \Illuminate\Support\Str::limit($base, $longueurMax, '') ?: 'REF';
+
+        $code = $base;
+        $suffixe = 1;
+
+        while ($modelClass::where('code', $code)->exists()) {
+            $suffixe++;
+            $marque = '_' . $suffixe;
+            $code = \Illuminate\Support\Str::limit($base, $longueurMax - strlen($marque), '') . $marque;
+        }
+
+        return $code;
     }
 
     public function recommencer(): void
