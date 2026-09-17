@@ -3,6 +3,10 @@
 @source '../../../../app/Filament/**/*';
 @source '../../../../resources/views/filament/**/*';
 
+/* Vues Filament surchargées : sans cette source, Tailwind ne verrait pas
+   les classes de la carte de compteur et les purgerait au build. */
+@source '../../../../resources/views/vendor/**/*';
+
 /* ══════════════════════════════════════════════════════════════════════
    Thème SEER — inspiration Vision UI Dashboard
 
@@ -87,16 +91,27 @@
 
 /* ─── Compteurs ────────────────────────────────────────────────────── */
 
-.dark .fi-wi-stats-overview-stat-label {
-    color: var(--seer-texte-attenue);
+/* La hiérarchie de la maquette : libellé discret, valeur qui domine,
+   précision en retrait. Appliquée dans les deux modes — c'est une règle
+   de lisibilité, pas un choix de couleur, et elle vaut aussi en clair. */
+.fi-wi-stats-overview-stat-label {
     font-size: 0.75rem;
     font-weight: 500;
+    letter-spacing: 0.01em;
+}
+
+.fi-wi-stats-overview-stat-value {
+    font-weight: 700;
+    letter-spacing: -0.01em;
+    line-height: 1.3;
+}
+
+.dark .fi-wi-stats-overview-stat-label {
+    color: var(--seer-texte-attenue);
 }
 
 .dark .fi-wi-stats-overview-stat-value {
     color: #fff;
-    font-weight: 700;
-    letter-spacing: -0.01em;
 }
 
 .dark .fi-wi-stats-overview-stat-description {
