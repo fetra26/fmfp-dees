@@ -117,34 +117,13 @@ class ImportProjets extends Command
     /**
      * Détecte le format du fichier Excel.
      *
-     * @return array{0:int, 1:int, 2:string}  [headingRow, startRow, format]
-     *   format = 'idee' | 'dees_bdd'
+     * Délègue au service partagé : la détection existait en double, et
+     * l'assistant d'import n'utilisait ni l'une ni l'autre.
+     *
+     * @return array{0: int, 1: int, 2: string}
      */
     private function detecterFormat(string $chemin): array
     {
-        try {
-            $spreadsheet = IOFactory::load($chemin);
-            $sheet = $spreadsheet->getActiveSheet();
-            $a1 = (string) ($sheet->getCellByColumnAndRow(1, 1)->getValue() ?? '');
-
-            // Détection format DEES_BDD : présence de "Matricule PA 1" en col J
-            $j1 = (string) ($sheet->getCellByColumnAndRow(10, 1)->getValue() ?? '');
-            $i1 = (string) ($sheet->getCellByColumnAndRow(9, 1)->getValue() ?? '');
-            if (str_contains(mb_strtolower($j1), 'matricule pa')
-                || str_contains(mb_strtolower($i1), 'partenaires associés pa')) {
-                return [1, 2, 'dees_bdd'];
-            }
-
-            // Sinon : format IDEE — officiel (catégories L1 en majuscules) ou simplifié
-            $estOfficiel = mb_strtoupper($a1) === $a1
-                && strlen(trim($a1)) > 3
-                && ! str_contains(mb_strtolower($a1), 'porteur')
-                && ! str_contains(mb_strtolower($a1), 'secteur')
-                && ! str_contains(mb_strtolower($a1), 'intitul');
-
-            return $estOfficiel ? [2, 4, 'idee'] : [1, 2, 'idee'];
-        } catch (\Throwable) {
-            return [1, 2, 'idee'];
-        }
+        return \App\Services\FormatFichierImport::detecter($chemin);
     }
 }

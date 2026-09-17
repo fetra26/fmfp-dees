@@ -40,6 +40,9 @@ class ImportWizard extends Page
     public ?string $cheminFichier = null;
     public array $scan = [];
     public array $resolutions = [];
+
+    /** @var array{0:int,1:int,2:string}|null  Disposition détectée du classeur. */
+    public ?array $formatDetecte = null;
     public int $refIndex = 0;
     public array $refKeys = ['secteur', 'vague', 'guichet', 'statut', 'region'];
     public array $rapportImport = [];
@@ -89,7 +92,14 @@ class ImportWizard extends Page
                 $this->cheminFichier = $chemin;
 
                 try {
-                    $this->scan = (new PreflightScanner())->scanner($chemin);
+                    // La disposition varie d'un classeur à l'autre : on la détecte
+                    // au lieu de la supposer. Sans cela, un fichier dont les
+                    // en-têtes sont en ligne 1 voyait sa première ligne de
+                    // données prise pour un en-tête, et perdue en silence.
+                    [$ligneEntetes, $ligneDonnees, $format] = \App\Services\FormatFichierImport::detecter($chemin);
+                    $this->formatDetecte = [$ligneEntetes, $ligneDonnees, $format];
+
+                    $this->scan = (new PreflightScanner())->scanner($chemin, $ligneDonnees);
                 } catch (\Throwable $e) {
                     Notification::make()->title('Erreur d\'analyse')->body($e->getMessage())->danger()->send();
                     return;
@@ -195,7 +205,10 @@ class ImportWizard extends Page
         // 2) Lancer l'import
         $import = new ProjetExcelImport();
         // Structure du template : L1 = titre section, L2 = en-têtes, L3+ = données
-        $import->setFormat(2, 3, 'idee');
+        [$ligneEntetes, $ligneDonnees, $format] = $this->formatDetecte
+            ?? \App\Services\FormatFichierImport::detecter($this->cheminFichier);
+
+        $import->setFormat($ligneEntetes, $ligneDonnees, $format);
         $import->fichierEnCours = basename($this->cheminFichier);
 
         try {
