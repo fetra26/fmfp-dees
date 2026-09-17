@@ -168,6 +168,31 @@ class ImportLigneProjetTest extends TestCase
     }
 
     #[Test]
+    public function une_ligne_ignoree_indique_son_numero_et_son_motif(): void
+    {
+        // Un compteur seul n'apprend rien : « 16 lignes ignorées » oblige à
+        // fouiller le fichier à la main. Le rapport doit dire lesquelles.
+        $import = $this->importer(
+            $this->ligneComplete(),
+            ['A' => 'THA'],
+        );
+
+        $this->assertCount(1, $import->lignesIgnorees);
+        $this->assertStringContainsString('identité', implode(' ', $import->lignesIgnorees));
+    }
+
+    #[Test]
+    public function une_ligne_ignoree_n_est_pas_comptee_comme_une_erreur(): void
+    {
+        // Un bas de tableau vide n'est pas un incident. Les confondre faisait
+        // passer de vraies erreurs pour des lignes anodines.
+        $import = $this->importer(['A' => 'THA']);
+
+        $this->assertCount(1, $import->lignesIgnorees);
+        $this->assertCount(0, $import->lignesEnErreur);
+    }
+
+    #[Test]
     public function une_ligne_de_bas_de_tableau_sans_identite_est_ignoree(): void
     {
         // Les classeurs de la DEES se terminent souvent par une ligne portant

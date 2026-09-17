@@ -41,6 +41,21 @@ class ProjetExcelImport implements ToCollection, WithStartRow, WithChunkReading,
     public int $skipped  = 0;
     public array $errors = [];
 
+    /**
+     * Lignes écartées délibérément, avec leur motif.
+     *
+     * Distinctes des lignes en erreur : un bas de tableau vide n'est pas un
+     * incident, alors qu'une exception en est un. Le compteur « ignorées »
+     * les confondait, si bien qu'un import pouvait masquer de vraies erreurs
+     * derrière un chiffre d'apparence anodine.
+     *
+     * @var array<int, string>  numéro de ligne => motif
+     */
+    public array $lignesIgnorees = [];
+
+    /** @var array<int, string>  numéro de ligne => message d'erreur */
+    public array $lignesEnErreur = [];
+
     /** Statistiques de la feuille "Partenaires" (nouveau template v3) */
     public int $partenairesImportes    = 0;
     public int $partenairesNonAssocies = 0;
@@ -118,6 +133,7 @@ class ProjetExcelImport implements ToCollection, WithStartRow, WithChunkReading,
                 }
             } catch (\Throwable $e) {
                 $this->skipped++;
+                $this->lignesEnErreur[$numLigne] = $e->getMessage();
                 $this->errors[] = "Ligne {$numLigne} : " . $e->getMessage();
                 Log::warning("Import ligne {$numLigne} : " . $e->getMessage());
             }
@@ -180,6 +196,7 @@ class ProjetExcelImport implements ToCollection, WithStartRow, WithChunkReading,
 
         if (collect($identifiants)->every(fn ($valeur) => blank($valeur))) {
             $this->skipped++;
+            $this->lignesIgnorees[$numLigne] = 'aucune identité : ni référence projet, ni référence convention, ni porteur, ni intitulé';
             return;
         }
 
@@ -1511,6 +1528,7 @@ class ProjetExcelImport implements ToCollection, WithStartRow, WithChunkReading,
         // Le porteur est obligatoire (raison_sociale NOT NULL en DB)
         if (blank($nomPorteur)) {
             $this->skipped++;
+            $this->lignesIgnorees[$numLigne] = 'porteur vide (colonne F), obligatoire dans ce format';
             return;
         }
 

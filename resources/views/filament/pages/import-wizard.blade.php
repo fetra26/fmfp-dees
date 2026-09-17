@@ -1239,11 +1239,66 @@
                     <div class="text-3xl font-bold text-orange-700">{{ $rapportImport['doublons'] ?? 0 }}</div>
                     <div class="text-sm text-gray-600">Doublons fusionnés</div>
                 </div>
-                <div class="bg-red-50 dark:bg-red-900/20 rounded-lg p-4 text-center">
-                    <div class="text-3xl font-bold text-red-700">{{ $rapportImport['ignores'] ?? 0 }}</div>
+                <div class="bg-gray-50 dark:bg-gray-800/40 rounded-lg p-4 text-center">
+                    <div class="text-3xl font-bold text-gray-500">{{ $rapportImport['ignores'] ?? 0 }}</div>
                     <div class="text-sm text-gray-600">Lignes ignorées</div>
                 </div>
+                <div class="bg-red-50 dark:bg-red-900/20 rounded-lg p-4 text-center">
+                    <div class="text-3xl font-bold text-red-700">{{ $rapportImport['en_erreur'] ?? 0 }}</div>
+                    <div class="text-sm text-gray-600">Lignes en erreur</div>
+                </div>
             </div>
+
+            {{-- Le détail, sans lequel le compteur n'apprend rien : numéro de
+                 ligne et motif, pour aller droit à la cellule dans le fichier. --}}
+            @if (! empty($rapportImport['detail_erreurs']))
+                <div class="mt-6 rounded-lg border border-red-200 dark:border-red-900 p-4">
+                    <div class="font-semibold text-red-700 mb-2">
+                        Lignes en erreur — à corriger dans le fichier
+                    </div>
+                    <ul class="text-sm space-y-1">
+                        @foreach (array_slice($rapportImport['detail_erreurs'], 0, 30, true) as $ligne => $motif)
+                            <li><span class="font-mono font-semibold">Ligne {{ $ligne }}</span> — {{ $motif }}</li>
+                        @endforeach
+                    </ul>
+                    @if (count($rapportImport['detail_erreurs']) > 30)
+                        <div class="text-xs text-gray-500 mt-2">
+                            … et {{ count($rapportImport['detail_erreurs']) - 30 }} autre(s).
+                        </div>
+                    @endif
+                </div>
+            @endif
+
+            @if (! empty($rapportImport['detail_ignorees']))
+                <div class="mt-4 rounded-lg border border-gray-200 dark:border-gray-700 p-4">
+                    <div class="font-semibold text-gray-700 dark:text-gray-300 mb-2">
+                        Lignes ignorées — aucune donnée exploitable
+                    </div>
+                    <ul class="text-sm space-y-1 text-gray-600 dark:text-gray-400">
+                        @foreach (array_slice($rapportImport['detail_ignorees'], 0, 30, true) as $ligne => $motif)
+                            <li><span class="font-mono font-semibold">Ligne {{ $ligne }}</span> — {{ $motif }}</li>
+                        @endforeach
+                    </ul>
+                    @if (count($rapportImport['detail_ignorees']) > 30)
+                        <div class="text-xs text-gray-500 mt-2">
+                            … et {{ count($rapportImport['detail_ignorees']) - 30 }} autre(s).
+                        </div>
+                    @endif
+                </div>
+            @endif
+
+            @if (! empty($rapportImport['messages']))
+                <details class="mt-4 rounded-lg border border-gray-200 dark:border-gray-700 p-4">
+                    <summary class="font-semibold text-gray-700 dark:text-gray-300 cursor-pointer">
+                        Journal de l'import ({{ count($rapportImport['messages']) }} message(s))
+                    </summary>
+                    <ul class="text-sm space-y-1 mt-3 text-gray-600 dark:text-gray-400">
+                        @foreach ($rapportImport['messages'] as $message)
+                            <li>{{ $message }}</li>
+                        @endforeach
+                    </ul>
+                </details>
+            @endif
 
             <div class="mt-6 flex gap-3">
                 <button type="button" wire:click="recommencer"

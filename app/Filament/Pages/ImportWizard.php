@@ -211,14 +211,22 @@ class ImportWizard extends Page
             ->where('statut', \App\Models\ImportConflict::STATUT_EN_ATTENTE)
             ->count();
 
+        // « Lignes ignorées » confondait deux choses très différentes : un bas de
+        // tableau vide, et une ligne qui a levé une exception. On les sépare, et
+        // on donne les numéros de ligne avec leur motif — sans quoi le chiffre
+        // n'apprend rien et oblige à fouiller le fichier à la main.
         $this->rapportImport = [
             'projets'            => $import->imported,
-            'ignores'            => $import->skipped,
+            'ignores'            => count($import->lignesIgnorees),
+            'en_erreur'          => count($import->lignesEnErreur),
             'partenaires'        => $import->partenairesImportes,
             'partenaires_rejets' => count($import->partenairesRejets),
             'doublons'           => count($import->doublonsProjets),
             'erreurs'            => count($import->errors),
             'conflits'           => $nbConflits,
+            'detail_ignorees'    => $import->lignesIgnorees,
+            'detail_erreurs'     => $import->lignesEnErreur,
+            'messages'           => array_slice($import->errors, 0, 50),
         ];
 
         $this->etape = 'done';
