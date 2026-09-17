@@ -63,7 +63,11 @@ class PaiementsExcelImport
         }
         $sh ??= $sp->getActiveSheet();
 
-        $lignes = $sh->toArray(null, false, false, false);
+        // 2e paramètre à true : les classeurs de la DEES calculent certains
+        // totaux par formule. Sans évaluation, on lirait le TEXTE de la
+        // formule — « =SUM(Tableau23[[#This Row],[Homme]]...) » — dont on
+        // extrayait par erreur les chiffres du nom de table.
+        $lignes = $sh->toArray(null, true, false, false);
 
         // Données à partir de la ligne 4 (index 3) — lignes 1-3 = en-têtes
         for ($i = 3; $i < count($lignes); $i++) {

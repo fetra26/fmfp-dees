@@ -56,7 +56,11 @@ class PreflightScanner
     {
         $sp = IOFactory::load($chemin);
         $sheet = $sp->getSheetByName('Import DEES') ?? $sp->getActiveSheet();
-        $lignes = $sheet->toArray(null, false, false, false);
+        // 2e paramètre à true : les classeurs de la DEES calculent certains
+        // totaux par formule. Sans évaluation, on lirait le TEXTE de la
+        // formule — « =SUM(Tableau23[[#This Row],[Homme]]...) » — dont on
+        // extrayait par erreur les chiffres du nom de table.
+        $lignes = $sheet->toArray(null, true, false, false);
 
         // 1) Extraire les valeurs distinctes par colonne
         $valeurs = [

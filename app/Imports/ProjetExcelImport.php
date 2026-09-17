@@ -24,6 +24,7 @@ use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
 use Maatwebsite\Excel\Concerns\ToCollection;
+use Maatwebsite\Excel\Concerns\WithCalculatedFormulas;
 use Maatwebsite\Excel\Concerns\WithChunkReading;
 use Maatwebsite\Excel\Concerns\WithStartRow;
 
@@ -34,7 +35,7 @@ use Maatwebsite\Excel\Concerns\WithStartRow;
  * dupliqués (H, F, Jeunes, FPE apparaissent dans la section prévu ET réalisé).
  * Maatwebsite/Excel écrase les doublons, ce qui mélange prévu et réalisé.
  */
-class ProjetExcelImport implements ToCollection, WithStartRow, WithChunkReading
+class ProjetExcelImport implements ToCollection, WithStartRow, WithChunkReading, WithCalculatedFormulas
 {
     public int $imported = 0;
     public int $skipped  = 0;
@@ -454,7 +455,11 @@ class ProjetExcelImport implements ToCollection, WithStartRow, WithChunkReading
             return; // feuille absente = ancien template, rien à faire
         }
 
-        $lignes = $feuille->toArray(null, false, false, false);
+        // 2e paramètre à true : les classeurs de la DEES calculent certains
+        // totaux par formule. Sans évaluation, on lirait le TEXTE de la
+        // formule — « =SUM(Tableau23[[#This Row],[Homme]]...) » — dont on
+        // extrayait par erreur les chiffres du nom de table.
+        $lignes = $feuille->toArray(null, true, false, false);
 
         // Colonnes du nouveau template (v3) :
         //   A=Ref projet, B=Ref convention, C=Intitulé (info), D=Porteur (info),
