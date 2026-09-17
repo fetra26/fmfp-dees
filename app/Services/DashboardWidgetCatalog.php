@@ -61,6 +61,16 @@ class DashboardWidgetCatalog
                     'label'       => 'Projets par statut',
                     'description' => 'Camembert des statuts',
                 ],
+                'top_regions' => [
+                    'class'       => \App\Filament\Widgets\TopRegionsWidget::class,
+                    'label'       => 'Classement des régions',
+                    'description' => 'Régions les plus actives, avec bénéficiaires par sexe',
+                ],
+                'benef_par_secteur' => [
+                    'class'       => \App\Filament\Widgets\BeneficiairesParSecteurWidget::class,
+                    'label'       => 'Bénéficiaires par secteur',
+                    'description' => 'Prévu et réalisé par secteur, filtrable par région',
+                ],
                 'projet_par_region' => [
                     'class'       => \App\Filament\Widgets\ProjetParRegionChart::class,
                     'label'       => 'Projets par région',
