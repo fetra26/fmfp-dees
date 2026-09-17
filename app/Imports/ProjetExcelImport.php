@@ -1026,18 +1026,59 @@ class ProjetExcelImport implements ToCollection, WithStartRow, WithChunkReading,
         if ($mappe instanceof \App\Models\Guichet) return $mappe;
         if ($mappe === 'ignore') return null;
 
+        // Même recherche que pour les vagues : code ET libellé, sous forme
+        // normalisée, pour ne pas recréer un guichet déjà saisi autrement.
+        $existant = $this->chercherReferentielNormalise(\App\Models\Guichet::class, $texte, $this->cacheGuichets);
+        if ($existant !== null) {
+            return $existant;
+        }
+
         $code = Str::limit(mb_strtoupper(preg_replace('/[^A-Z0-9]/', '', mb_strtoupper($texte))), 20, '');
         if (blank($code)) return null;
 
-        // Cache mémoire pour éviter SELECT/INSERT répétés
-        if (isset($this->cacheGuichets[$code])) {
-            return $this->cacheGuichets[$code];
-        }
-
-        return $this->cacheGuichets[$code] = \App\Models\Guichet::firstOrCreate(
+        $guichet = \App\Models\Guichet::firstOrCreate(
             ['code' => $code],
             ['libelle' => Str::limit(\App\Models\ImportMapping::formaterLibelle($texte) ?: $texte, 150, ''), 'is_active' => true]
         );
+
+        return $this->cacheGuichets[\App\Models\ImportMapping::normaliser($texte)] = $guichet;
+    }
+
+    /**
+     * Cherche un référentiel par son code OU son libellé, sous forme normalisée.
+     *
+     * Les référentiels naîssent de deux sources qui ne codent pas pareil :
+     * l'assistant d'import produit un code en UPPER_SNAKE_CASE (« AP5_EQ »),
+     * tandis que la résolution automatique retirait tous les séparateurs
+     * (« AP5EQ »). Chercher sur le seul code créait donc un doublon à chaque
+     * fois que les deux chemins se croisaient sur la même valeur — constaté en
+     * base avec deux vagues « AP5_EQ » distinctes.
+     *
+     * En indexant code ET libellé sous leur forme normalisée, les deux se
+     * rejoignent : « AP5_EQ », « AP5EQ » et « AP5 EQ » mènent au même
+     * enregistrement.
+     *
+     * @param  array<string, mixed>  $cache  Index construit une seule fois par import.
+     */
+    protected function chercherReferentielNormalise(string $modelClass, string $texte, array &$cache): mixed
+    {
+        $normalisee = \App\Models\ImportMapping::normaliser($texte);
+        if ($normalisee === null) {
+            return null;
+        }
+
+        if ($cache === []) {
+            foreach ($modelClass::all() as $enregistrement) {
+                foreach ([$enregistrement->code, $enregistrement->libelle] as $forme) {
+                    $cle = \App\Models\ImportMapping::normaliser((string) $forme);
+                    if ($cle !== null && ! isset($cache[$cle])) {
+                        $cache[$cle] = $enregistrement;
+                    }
+                }
+            }
+        }
+
+        return $cache[$normalisee] ?? null;
     }
 
     protected function resoudreVague(string $texte): ?\App\Models\Vague
@@ -1050,20 +1091,23 @@ class ProjetExcelImport implements ToCollection, WithStartRow, WithChunkReading,
         if ($mappe instanceof \App\Models\Vague) return $mappe;
         if ($mappe === 'ignore') return null;
 
+        $existante = $this->chercherReferentielNormalise(\App\Models\Vague::class, $texte, $this->cacheVagues);
+        if ($existante !== null) {
+            return $existante;
+        }
+
         $code = Str::limit(mb_strtoupper(preg_replace('/[^A-Z0-9]/', '', mb_strtoupper($texte))), 20, '');
         if (blank($code)) return null;
-
-        if (isset($this->cacheVagues[$code])) {
-            return $this->cacheVagues[$code];
-        }
 
         $annee = null;
         if (preg_match('/(\d{4})/', $texte, $m)) $annee = (int) $m[1];
 
-        return $this->cacheVagues[$code] = \App\Models\Vague::firstOrCreate(
+        $vague = \App\Models\Vague::firstOrCreate(
             ['code' => $code],
             ['libelle' => Str::limit(\App\Models\ImportMapping::formaterLibelle($texte) ?: $texte, 150, ''), 'annee' => $annee, 'is_active' => true]
         );
+
+        return $this->cacheVagues[\App\Models\ImportMapping::normaliser($texte)] = $vague;
     }
 
     protected function resoudreSecteur(string $texte): ?Secteur
