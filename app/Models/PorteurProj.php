@@ -49,6 +49,37 @@ class PorteurProj extends Model
         'date_validation_evaluateur' => 'date', 'date_transmission_daf' => 'date',
     ];
 
+    /**
+     * Recalcule le niveau d'alerte dès qu'un champ qui le détermine change.
+     *
+     * Le job ne passe que la nuit. Or rouvrir un dossier clôturé — en le
+     * repassant par exemple en « attente pièces régul. » — doit le faire
+     * réapparaître immédiatement dans les alertes, avec le niveau correspondant
+     * à son retard. Sans ce hook, la DEES modifierait un statut et ne verrait
+     * rien changer avant le lendemain.
+     *
+     * Le calcul n'a lieu que si statut_validation ou date_fin a bougé : sur un
+     * import de plusieurs milliers de lignes, le déclencher à chaque
+     * enregistrement coûterait une requête par ligne pour rien.
+     *
+     * Un niveau posé explicitement dans la même opération est respecté : c'est
+     * ainsi que le job écrit son résultat sans que le hook le recalcule aussitôt.
+     */
+    protected static function booted(): void
+    {
+        static::saving(function (self $pp) {
+            if ($pp->isDirty('niveau_alerte')) {
+                return;
+            }
+
+            if (! $pp->exists || ! $pp->isDirty(['statut_validation', 'date_fin'])) {
+                return;
+            }
+
+            $pp->niveau_alerte = \App\Services\CalculAlerte::niveauPour($pp);
+        });
+    }
+
     public function getActivitylogOptions(): LogOptions
     {
         return LogOptions::defaults()

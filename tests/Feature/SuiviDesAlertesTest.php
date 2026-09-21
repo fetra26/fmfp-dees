@@ -177,15 +177,112 @@ class SuiviDesAlertesTest extends TestCase
         $this->assertNull($pp->fresh()->niveau_alerte);
     }
 
+    // ─────────── Réouverture d'un dossier
+
     #[Test]
-    public function la_sortie_du_suivi_est_comptabilisee(): void
+    public function rouvrir_un_projet_cloture_le_remet_en_alerte_immediatement(): void
     {
-        $pp = $this->projet(['date_fin' => now()->subDays(120)]);
+        // Le cas décrit par la DEES : on repasse un dossier clôturé en
+        // « attente pièces régul. », il doit revenir dans les alertes AUSSITÔT,
+        // avec le niveau correspondant à son retard — pas au prochain passage
+        // de nuit du job.
+        $pp = $this->projet(['statut_validation' => 'cloture', 'date_fin' => now()->subDays(95)]);
         $this->classer();
+        $this->assertNull($pp->fresh()->niveau_alerte, 'Un dossier clôturé ne doit pas être en alerte.');
+
+        $pp->update(['statut_validation' => 'attente_pieces_regul']);
+
+        $this->assertSame('rouge', $pp->fresh()->niveau_alerte);
+    }
+
+    public static function reouverturesSelonRetard(): array
+    {
+        return [
+            '40 jours de retard'  => [40,  'verte'],
+            '70 jours de retard'  => [70,  'orange'],
+            '120 jours de retard' => [120, 'rouge'],
+            '10 jours de retard'  => [10,  null],
+        ];
+    }
+
+    #[Test]
+    #[DataProvider('reouverturesSelonRetard')]
+    public function le_niveau_a_la_reouverture_suit_le_calcul_des_jours(int $jours, ?string $attendu): void
+    {
+        $pp = $this->projet(['statut_validation' => 'cloture', 'date_fin' => now()->subDays($jours)]);
+
+        $pp->update(['statut_validation' => 'attente_pieces_regul']);
+
+        $this->assertSame($attendu, $pp->fresh()->niveau_alerte);
+    }
+
+    #[Test]
+    public function cloturer_un_projet_le_sort_des_alertes_immediatement(): void
+    {
+        // La transition inverse doit être tout aussi immédiate.
+        $pp = $this->projet(['date_fin' => now()->subDays(95)]);
+        $this->classer();
+        $this->assertSame('rouge', $pp->fresh()->niveau_alerte);
 
         $pp->update(['statut_validation' => 'cloture']);
+
+        $this->assertNull($pp->fresh()->niveau_alerte);
+    }
+
+    #[Test]
+    public function reporter_la_date_de_fin_recalcule_le_niveau(): void
+    {
+        $pp = $this->projet(['date_fin' => now()->subDays(95)]);
+        $this->classer();
+        $this->assertSame('rouge', $pp->fresh()->niveau_alerte);
+
+        // Avenant : la convention est prolongée, le retard disparaît.
+        $pp->update(['date_fin' => now()->addDays(60)]);
+
+        $this->assertNull($pp->fresh()->niveau_alerte);
+    }
+
+    #[Test]
+    public function modifier_un_champ_sans_rapport_ne_touche_pas_au_niveau(): void
+    {
+        // Le hook ne doit se déclencher que sur statut_validation et date_fin :
+        // ailleurs, il coûterait une requête par ligne à l'import pour rien.
+        $pp = $this->projet(['date_fin' => now()->subDays(95)]);
+        $this->classer();
+
+        $pp->update(['observations' => 'note de suivi']);
+
+        $this->assertSame('rouge', $pp->fresh()->niveau_alerte);
+    }
+
+    #[Test]
+    public function un_niveau_pose_explicitement_n_est_pas_ecrase(): void
+    {
+        // C'est ainsi que le job écrit son résultat sans que le hook le
+        // recalcule dans la foulée.
+        $pp = $this->projet(['date_fin' => now()->subDays(95)]);
+
+        $pp->update(['statut_validation' => 'cloture', 'niveau_alerte' => 'orange']);
+
+        $this->assertSame('orange', $pp->fresh()->niveau_alerte);
+    }
+
+    #[Test]
+    public function le_job_rattrape_les_sorties_que_le_hook_ne_voit_pas(): void
+    {
+        // Le hook du modèle ne surveille que statut_validation et date_fin. Un
+        // projet soldé par l'ajout de ses tranches sort donc du suivi au
+        // prochain passage du job, et c'est lui qui le comptabilise.
+        $pp = $this->projet(['date_fin' => now()->subDays(120)]);
+        $this->classer();
+        $this->assertSame('rouge', $pp->fresh()->niveau_alerte);
+
+        PaiementFactory::new()->tranche('J1', 1_000_000)->create(['porteur_proj_id' => $pp->id]);
+        PaiementFactory::new()->tranche('J2', 1_000_000)->create(['porteur_proj_id' => $pp->id]);
+
         $job = $this->classer();
 
+        $this->assertNull($pp->fresh()->niveau_alerte);
         $this->assertSame(1, $job->sortiesDuSuivi);
     }
 

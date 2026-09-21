@@ -5,6 +5,7 @@ namespace App\Jobs;
 use App\Models\PorteurProj;
 use App\Models\Relance;
 use App\Models\TypeRelance;
+use App\Services\CalculAlerte;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Queue\Queueable;
 use Illuminate\Support\Carbon;
@@ -49,9 +50,12 @@ class ClassifyAlertsJob implements ShouldQueue
                     $this->totalTraites++;
                     $ancienNiveau = $pp->niveau_alerte;
 
-                    $nouveauNiveau = $this->estSousSuivi($pp)
-                        ? $this->calculerNiveauAlerte($pp->date_fin, $aujourdhui)
-                        : null;
+                    // Règle portée par CalculAlerte, partagée avec le hook du
+                    // modèle : rouvrir un dossier depuis l'interface doit le
+                    // faire réapparaître aussitôt, sans attendre cette passe.
+                    // paiementsCharges: true — la relation est préchargée plus
+                    // haut, inutile d'interroger la base ligne à ligne.
+                    $nouveauNiveau = CalculAlerte::niveauPour($pp, $aujourdhui, paiementsCharges: true);
 
                     if ($ancienNiveau === $nouveauNiveau) {
                         continue;
@@ -83,78 +87,6 @@ class ClassifyAlertsJob implements ShouldQueue
             'relances_creees'    => $this->relancesCreees,
             'sorties_du_suivi'   => $this->sortiesDuSuivi,
         ]);
-    }
-
-    /**
-     * Statuts qui retirent un projet du suivi des alertes.
-     *
-     * Un dossier clôturé, annulé ou résilié n'a plus à être relancé : c'est
-     * précisément l'objet de ce suivi que de poursuivre les conventions dont
-     * l'échéance est passée SANS que le projet soit clos.
-     */
-    protected const STATUTS_HORS_SUIVI = ['cloture', 'fini_cloture', 'annule', 'resilie'];
-
-    /**
-     * Ce projet doit-il encore être surveillé ?
-     *
-     * Deux façons d'en sortir, retenues avec la DEES : le statut prononcé, ou
-     * le versement intégral des tranches. La seconde évite de relancer un
-     * porteur déjà soldé dont le statut n'aurait pas encore été mis à jour.
-     */
-    protected function estSousSuivi(PorteurProj $pp): bool
-    {
-        if (blank($pp->date_fin)) {
-            return false;
-        }
-
-        if (in_array($pp->statut_validation, self::STATUTS_HORS_SUIVI, true)) {
-            return false;
-        }
-
-        return ! $this->tranchesSoldees($pp);
-    }
-
-    /**
-     * Les tranches sont-elles versées ?
-     *
-     * J1 et J2 suffisent : le versement se fait généralement en deux jalons,
-     * le J3 n'existant que sur les cas équité. L'exiger laisserait la plupart
-     * des projets éternellement sous suivi.
-     */
-    protected function tranchesSoldees(PorteurProj $pp): bool
-    {
-        $tranches = $pp->paiements
-            ->where('is_annule', false)
-            ->pluck('ligne')
-            ->unique();
-
-        return $tranches->contains('J1') && $tranches->contains('J2');
-    }
-
-    /**
-     * Niveau d'alerte, ou null si le projet n'est pas en alerte.
-     *
-     * Renvoyer null plutôt que 'verte' en deçà de 30 jours est le cœur de la
-     * correction : 'verte' désignait aussi bien un projet à l'heure qu'un
-     * retard de 30 à 59 jours appelant une relance. Les deux étaient donc
-     * impossibles à distinguer, et le compteur « alertes vertes » du tableau
-     * de bord affichait en réalité tout le portefeuille.
-     */
-    protected function calculerNiveauAlerte($dateFin, Carbon $aujourdhui): ?string
-    {
-        $dateFin = Carbon::parse($dateFin);
-
-        if ($aujourdhui->lessThanOrEqualTo($dateFin)) {
-            return null;
-        }
-
-        $joursDepasses = (int) $dateFin->diffInDays($aujourdhui);
-
-        if ($joursDepasses >= 90) return 'rouge';
-        if ($joursDepasses >= 60) return 'orange';
-        if ($joursDepasses >= 30) return 'verte';
-
-        return null;
     }
 
     protected function creerRelanceSiNecessaire(PorteurProj $pp, string $ancien, string $nouveau, Carbon $aujourdhui): void
