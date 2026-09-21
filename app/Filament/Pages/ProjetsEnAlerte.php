@@ -90,8 +90,7 @@ class ProjetsEnAlerte extends Page implements HasTable
     public function comptesParNiveau(): array
     {
         $comptes = PorteurProj::query()
-            ->whereNotNull('date_fin')
-            ->whereDate('date_fin', '<', now())
+            ->whereNotNull('niveau_alerte')
             ->selectRaw('niveau_alerte, COUNT(*) AS total')
             ->groupBy('niveau_alerte')
             ->pluck('total', 'niveau_alerte');
@@ -110,8 +109,6 @@ class ProjetsEnAlerte extends Page implements HasTable
     {
         $n = PorteurProj::query()
             ->whereIn('niveau_alerte', ['orange', 'rouge'])
-            ->whereNotNull('date_fin')
-            ->whereNull('date_resiliation')
             ->count();
 
         return $n > 0 ? (string) $n : null;
@@ -119,10 +116,7 @@ class ProjetsEnAlerte extends Page implements HasTable
 
     public static function getNavigationBadgeColor(): ?string
     {
-        $rouges = PorteurProj::query()
-            ->where('niveau_alerte', 'rouge')
-            ->whereNull('date_resiliation')
-            ->count();
+        $rouges = PorteurProj::query()->where('niveau_alerte', 'rouge')->count();
 
         return $rouges > 0 ? 'danger' : 'warning';
     }
@@ -135,7 +129,11 @@ class ProjetsEnAlerte extends Page implements HasTable
             // changer d'onglet n'aurait alors aucun effet.
             ->query(fn (): Builder => PorteurProj::query()
                 ->with(['projet', 'porteur'])
-                ->whereNotNull('date_fin')
+                // niveau_alerte est désormais null quand le projet n'est pas en
+                // alerte — à l'heure, clôturé, soldé, annulé ou résilié. La
+                // requête n'a plus à recroiser date de fin et statut : un seul
+                // champ porte la réponse, calculé en un seul endroit.
+                ->whereNotNull('niveau_alerte')
                 ->when($this->niveau, fn (Builder $q) => $q->where('niveau_alerte', $this->niveau)))
             ->defaultSort('date_fin', 'asc')
             ->columns([
@@ -206,18 +204,6 @@ class ProjetsEnAlerte extends Page implements HasTable
                     ->toggleable(),
             ])
             ->filters([
-                TernaryFilter::make('en_retard')
-                    ->label('Échéance dépassée')
-                    ->placeholder('Tous les projets')
-                    ->trueLabel('Uniquement les retards')
-                    ->falseLabel('Uniquement dans les temps')
-                    ->queries(
-                        true: fn (Builder $q) => $q->whereDate('date_fin', '<', now()),
-                        false: fn (Builder $q) => $q->whereDate('date_fin', '>=', now()),
-                        blank: fn (Builder $q) => $q,
-                    )
-                    ->default(true),
-
                 TernaryFilter::make('resilies')
                     ->label('Dossiers résiliés')
                     ->placeholder('Tous')

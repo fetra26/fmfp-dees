@@ -78,9 +78,9 @@
             <li><span class="font-semibold text-danger-600">Rouge</span> — 90 jours et plus : procédure de résiliation.</li>
         </ul>
         <div class="mt-2 text-xs opacity-75">
-            Les niveaux sont recalculés chaque nuit. « Verte » couvre aussi les projets
-            encore dans les temps : le filtre « Échéance dépassée » les écarte par défaut,
-            et les compteurs d'onglets ne comptent que les retards.
+            Un projet quitte ce suivi dès qu'il est <strong>clôturé</strong>, annulé, résilié,
+            ou que ses tranches J1 et J2 sont versées — il n'y a alors plus rien à relancer.
+            Les niveaux sont recalculés chaque nuit.
         </div>
     </div>
 

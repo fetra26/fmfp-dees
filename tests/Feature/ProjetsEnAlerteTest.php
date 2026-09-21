@@ -58,7 +58,7 @@ class ProjetsEnAlerteTest extends TestCase
         // « Verte » est aussi la valeur par d\u00e9faut du job pour un projet \u00e0
         // l'heure : sans le filtre, la liste m\u00ealerait dossiers \u00e0 relancer et
         // dossiers qui vont tr\u00e8s bien.
-        $aLHeure = $this->projet(['date_fin' => now()->addDays(30), 'niveau_alerte' => 'verte']);
+        $aLHeure = $this->projet(['date_fin' => now()->addDays(30), 'niveau_alerte' => null]);
 
         Livewire::test(ProjetsEnAlerte::class)
             ->assertCanNotSeeTableRecords([$aLHeure]);
@@ -138,7 +138,7 @@ class ProjetsEnAlerteTest extends TestCase
     {
         // « Verte » est aussi la valeur attribuée à un projet à l'heure : un
         // comptage brut gonflerait cet onglet de dossiers qui vont très bien.
-        $this->projet(['date_fin' => now()->addDays(30), 'niveau_alerte' => 'verte']);
+        $this->projet(['date_fin' => now()->addDays(30), 'niveau_alerte' => null]);
         $this->projet(['date_fin' => now()->subDays(40), 'niveau_alerte' => 'verte']);
 
         $comptes = (new ProjetsEnAlerte())->comptesParNiveau();
@@ -161,12 +161,17 @@ class ProjetsEnAlerteTest extends TestCase
     public function un_dossier_resilie_ne_compte_plus_dans_la_pastille(): void
     {
         // La proc\u00e9dure est all\u00e9e \u00e0 son terme : il n'y a plus rien \u00e0 relancer.
-        $this->projet([
-            'date_fin'         => now()->subDays(120),
-            'niveau_alerte'    => 'rouge',
-            'date_resiliation' => now()->subDays(5),
+        $pp = $this->projet([
+            'date_fin'          => now()->subDays(120),
+            'statut_validation' => 'cloture',
+            'niveau_alerte'     => 'rouge',
         ]);
 
+        // C'est le job qui remet le niveau a null ; la pastille se contente de
+        // lire ce champ, sans rederiver la regle de son cote.
+        (new \App\Jobs\ClassifyAlertsJob())->handle();
+
+        $this->assertNull($pp->fresh()->niveau_alerte);
         $this->assertNull(ProjetsEnAlerte::getNavigationBadge());
     }
 
