@@ -1,6 +1,69 @@
+@php
+    $comptes = $this->comptesParNiveau();
+
+    // Le style de chaque onglet, actif ou non. Les classes sont écrites en
+    // toutes lettres pour que Tailwind les détecte au build : une classe
+    // construite dynamiquement serait purgée et l'onglet resterait incolore.
+    $styles = [
+        'tous'   => ['actif' => 'bg-primary-600 text-white border-primary-600',
+                     'repos' => 'border-gray-300 dark:border-gray-600 hover:border-primary-400'],
+        'rouge'  => ['actif' => 'bg-danger-600 text-white border-danger-600',
+                     'repos' => 'border-gray-300 dark:border-gray-600 hover:border-danger-400'],
+        'orange' => ['actif' => 'bg-warning-500 text-white border-warning-500',
+                     'repos' => 'border-gray-300 dark:border-gray-600 hover:border-warning-400'],
+        'verte'  => ['actif' => 'bg-success-600 text-white border-success-600',
+                     'repos' => 'border-gray-300 dark:border-gray-600 hover:border-success-400'],
+    ];
+
+    $pastilles = [
+        'tous'   => 'bg-gray-400',
+        'rouge'  => 'bg-danger-500',
+        'orange' => 'bg-warning-500',
+        'verte'  => 'bg-success-500',
+    ];
+
+    $onglets = ['tous' => ['Toutes', 'Tous niveaux confondus']]
+        + collect(\App\Filament\Pages\ProjetsEnAlerte::NIVEAUX)
+            ->map(fn ($n) => [$n[0], $n[2]])
+            ->all();
+@endphp
+
 <x-filament-panels::page>
-    {{-- Rappel de la règle métier : sans elle, les niveaux de couleur ne
-         veulent rien dire pour quelqu'un qui arrive sur l'écran. --}}
+    {{-- Onglets par niveau : la couleur porte l'urgence, le nombre dit
+         l'ampleur. Comptés sur les seules échéances dépassées. --}}
+    <div class="flex flex-wrap gap-2">
+        @foreach ($onglets as $cle => [$libelle, $description])
+            @php
+                $estActif = ($cle === 'tous' && $niveau === null) || $niveau === $cle;
+                $style = $estActif ? $styles[$cle]['actif'] : $styles[$cle]['repos'];
+            @endphp
+
+            <button
+                type="button"
+                wire:click="changerNiveau({{ $cle === 'tous' ? 'null' : "'{$cle}'" }})"
+                title="{{ $description }}"
+                @class([
+                    'flex items-center gap-2 rounded-xl border px-4 py-2 text-sm font-semibold transition',
+                    $style,
+                ])
+            >
+                @unless ($estActif)
+                    <span @class(['size-2.5 rounded-full', $pastilles[$cle]])></span>
+                @endunless
+
+                <span>{{ $libelle }}</span>
+
+                <span @class([
+                    'rounded-md px-1.5 py-0.5 text-xs font-bold',
+                    'bg-white/25' => $estActif,
+                    'bg-gray-100 dark:bg-gray-700' => ! $estActif,
+                ])>{{ number_format($comptes[$cle] ?? 0, 0, ',', ' ') }}</span>
+            </button>
+        @endforeach
+    </div>
+
+    {{-- Rappel de la règle : sans elle, les couleurs ne veulent rien dire
+         pour quelqu'un qui arrive sur l'écran. --}}
     <div class="fi-section rounded-xl p-4 text-sm">
         <div class="font-semibold mb-2">Seuils de relance</div>
         <ul class="space-y-1">
@@ -10,7 +73,8 @@
         </ul>
         <div class="mt-2 text-xs opacity-75">
             Les niveaux sont recalculés chaque nuit. « Verte » couvre aussi les projets
-            encore dans les temps : le filtre « Échéance dépassée » les écarte par défaut.
+            encore dans les temps : le filtre « Échéance dépassée » les écarte par défaut,
+            et les compteurs d'onglets ne comptent que les retards.
         </div>
     </div>
 

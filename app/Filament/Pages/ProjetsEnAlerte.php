@@ -7,7 +7,6 @@ use Filament\Pages\Page;
 use Filament\Tables\Columns\TextColumn;
 use Filament\Tables\Concerns\InteractsWithTable;
 use Filament\Tables\Contracts\HasTable;
-use Filament\Tables\Filters\SelectFilter;
 use Filament\Tables\Filters\TernaryFilter;
 use Filament\Tables\Table;
 use Illuminate\Database\Eloquent\Builder;
@@ -45,6 +44,61 @@ class ProjetsEnAlerte extends Page implements HasTable
 
     protected string $view = 'filament.pages.projets-en-alerte';
 
+    /**
+     * Niveau sélectionné dans les onglets. Null affiche tous les niveaux.
+     *
+     * Les onglets remplacent le filtre déroulant : deux mécanismes pour la
+     * même chose se seraient contredits, l'un pouvant masquer ce que l'autre
+     * sélectionne.
+     */
+    public ?string $niveau = null;
+
+    /** Couleurs et libellés des onglets, du plus urgent au moins urgent. */
+    public const NIVEAUX = [
+        'rouge'  => ['Rouge',  'danger',  'Résiliation — 90 jours et plus'],
+        'orange' => ['Orange', 'warning', 'Mise en demeure — 60 à 89 jours'],
+        'verte'  => ['Verte',  'success', 'Relance préventive — 30 à 59 jours'],
+    ];
+
+    public function changerNiveau(?string $niveau): void
+    {
+        $this->niveau = $niveau;
+
+        // Filament mémorise les enregistrements de la table pour la durée de la
+        // requête : sans purge explicite, changer d'onglet laissait la liste
+        // précédente à l'écran. On ne passe pas par resetTable(), qui
+        // réinitialiserait aussi les filtres choisis par l'utilisateur.
+        $this->resetPage();
+        $this->flushCachedTableRecords();
+    }
+
+    /**
+     * Effectif de chaque onglet.
+     *
+     * Compté sur les seules échéances dépassées, comme la vue par défaut :
+     * « verte » étant aussi la valeur attribuée aux projets dans les temps,
+     * un comptage brut gonflerait cet onglet de dossiers qui vont très bien.
+     *
+     * @return array<string, int>
+     */
+    public function comptesParNiveau(): array
+    {
+        $comptes = PorteurProj::query()
+            ->whereNotNull('date_fin')
+            ->whereDate('date_fin', '<', now())
+            ->selectRaw('niveau_alerte, COUNT(*) AS total')
+            ->groupBy('niveau_alerte')
+            ->pluck('total', 'niveau_alerte');
+
+        $resultat = ['tous' => 0];
+        foreach (array_keys(self::NIVEAUX) as $niveau) {
+            $resultat[$niveau] = (int) ($comptes[$niveau] ?? 0);
+            $resultat['tous'] += $resultat[$niveau];
+        }
+
+        return $resultat;
+    }
+
     /** Pastille de navigation : le nombre de dossiers réellement à traiter. */
     public static function getNavigationBadge(): ?string
     {
@@ -70,11 +124,13 @@ class ProjetsEnAlerte extends Page implements HasTable
     public function table(Table $table): Table
     {
         return $table
-            ->query(
-                PorteurProj::query()
-                    ->with(['projet', 'porteur'])
-                    ->whereNotNull('date_fin')
-            )
+            // Closure et non Builder déjà construit : passée telle quelle, la
+            // requête serait figée au premier rendu, avec $niveau encore nul —
+            // changer d'onglet n'aurait alors aucun effet.
+            ->query(fn (): Builder => PorteurProj::query()
+                ->with(['projet', 'porteur'])
+                ->whereNotNull('date_fin')
+                ->when($this->niveau, fn (Builder $q) => $q->where('niveau_alerte', $this->niveau)))
             ->defaultSort('date_fin', 'asc')
             ->columns([
                 TextColumn::make('projet.reference')
@@ -144,14 +200,6 @@ class ProjetsEnAlerte extends Page implements HasTable
                     ->toggleable(),
             ])
             ->filters([
-                SelectFilter::make('niveau_alerte')
-                    ->label('Niveau')
-                    ->options([
-                        'rouge'  => 'Rouge — résiliation (90 j et plus)',
-                        'orange' => 'Orange — mise en demeure (60-89 j)',
-                        'verte'  => 'Verte — relance préventive (30-59 j)',
-                    ]),
-
                 TernaryFilter::make('en_retard')
                     ->label('Échéance dépassée')
                     ->placeholder('Tous les projets')

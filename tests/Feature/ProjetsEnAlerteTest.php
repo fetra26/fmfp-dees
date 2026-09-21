@@ -65,15 +65,57 @@ class ProjetsEnAlerteTest extends TestCase
     }
 
     #[Test]
-    public function le_filtre_de_niveau_restreint_la_liste(): void
+    public function l_onglet_rouge_ne_montre_que_les_alertes_rouges(): void
     {
         $rouge  = $this->projet(['date_fin' => now()->subDays(95), 'niveau_alerte' => 'rouge']);
         $orange = $this->projet(['date_fin' => now()->subDays(70), 'niveau_alerte' => 'orange']);
 
         Livewire::test(ProjetsEnAlerte::class)
-            ->filterTable('niveau_alerte', 'rouge')
+            ->call('changerNiveau', 'rouge')
             ->assertCanSeeTableRecords([$rouge])
             ->assertCanNotSeeTableRecords([$orange]);
+    }
+
+    #[Test]
+    public function l_onglet_toutes_rassemble_les_niveaux(): void
+    {
+        $rouge  = $this->projet(['date_fin' => now()->subDays(95), 'niveau_alerte' => 'rouge']);
+        $orange = $this->projet(['date_fin' => now()->subDays(70), 'niveau_alerte' => 'orange']);
+        $verte  = $this->projet(['date_fin' => now()->subDays(40), 'niveau_alerte' => 'verte']);
+
+        Livewire::test(ProjetsEnAlerte::class)
+            ->call('changerNiveau', 'rouge')
+            ->call('changerNiveau', null)
+            ->assertCanSeeTableRecords([$rouge, $orange, $verte]);
+    }
+
+    #[Test]
+    public function chaque_onglet_annonce_son_effectif(): void
+    {
+        $this->projet(['date_fin' => now()->subDays(95),  'niveau_alerte' => 'rouge']);
+        $this->projet(['date_fin' => now()->subDays(100), 'niveau_alerte' => 'rouge']);
+        $this->projet(['date_fin' => now()->subDays(70),  'niveau_alerte' => 'orange']);
+        $this->projet(['date_fin' => now()->subDays(40),  'niveau_alerte' => 'verte']);
+
+        $comptes = (new ProjetsEnAlerte())->comptesParNiveau();
+
+        $this->assertSame(2, $comptes['rouge']);
+        $this->assertSame(1, $comptes['orange']);
+        $this->assertSame(1, $comptes['verte']);
+        $this->assertSame(4, $comptes['tous'], 'Le total doit être la somme des niveaux.');
+    }
+
+    #[Test]
+    public function les_compteurs_d_onglets_excluent_les_projets_dans_les_temps(): void
+    {
+        // « Verte » est aussi la valeur attribuée à un projet à l'heure : un
+        // comptage brut gonflerait cet onglet de dossiers qui vont très bien.
+        $this->projet(['date_fin' => now()->addDays(30), 'niveau_alerte' => 'verte']);
+        $this->projet(['date_fin' => now()->subDays(40), 'niveau_alerte' => 'verte']);
+
+        $comptes = (new ProjetsEnAlerte())->comptesParNiveau();
+
+        $this->assertSame(1, $comptes['verte']);
     }
 
     #[Test]
