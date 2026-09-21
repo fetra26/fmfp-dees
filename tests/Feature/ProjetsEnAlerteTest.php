@@ -90,6 +90,34 @@ class ProjetsEnAlerteTest extends TestCase
     }
 
     #[Test]
+    public function chaque_onglet_porte_une_icone_distincte(): void
+    {
+        // Les icônes doublent la couleur plutôt que de s'y substituer : environ
+        // un homme sur douze distingue mal le rouge du vert, et la seule teinte
+        // ne dirait pas lequel des onglets appelle une résiliation.
+        $icones = collect(ProjetsEnAlerte::NIVEAUX)->map(fn ($n) => $n[2]);
+
+        $this->assertCount(3, $icones->unique(), 'Chaque niveau doit avoir sa propre icône.');
+
+        foreach ($icones as $icone) {
+            $this->assertStringStartsWith('heroicon-', $icone);
+        }
+    }
+
+    #[Test]
+    public function les_icones_des_onglets_sont_rendues_dans_la_page(): void
+    {
+        $this->projet(['date_fin' => now()->subDays(95), 'niveau_alerte' => 'rouge']);
+
+        Livewire::test(ProjetsEnAlerte::class)
+            ->assertOk()
+            ->assertSee('Rouge')
+            ->assertSee('Orange')
+            ->assertSee('Verte')
+            ->assertSee('Toutes');
+    }
+
+    #[Test]
     public function chaque_onglet_annonce_son_effectif(): void
     {
         $this->projet(['date_fin' => now()->subDays(95),  'niveau_alerte' => 'rouge']);

@@ -53,11 +53,17 @@ class ProjetsEnAlerte extends Page implements HasTable
      */
     public ?string $niveau = null;
 
-    /** Couleurs et libellés des onglets, du plus urgent au moins urgent. */
+    /**
+     * Onglets, du plus urgent au moins urgent : libellé, couleur, icône, aide.
+     *
+     * Les icônes doublent la couleur plutôt que de s'y substituer : environ un
+     * homme sur douze distingue mal le rouge du vert, et la seule teinte ne
+     * suffirait pas à dire lequel des onglets appelle une résiliation.
+     */
     public const NIVEAUX = [
-        'rouge'  => ['Rouge',  'danger',  'Résiliation — 90 jours et plus'],
-        'orange' => ['Orange', 'warning', 'Mise en demeure — 60 à 89 jours'],
-        'verte'  => ['Verte',  'success', 'Relance préventive — 30 à 59 jours'],
+        'rouge'  => ['Rouge',  'danger',  'heroicon-o-fire',                 'Résiliation — 90 jours et plus'],
+        'orange' => ['Orange', 'warning', 'heroicon-o-exclamation-triangle', 'Mise en demeure — 60 à 89 jours'],
+        'verte'  => ['Verte',  'success', 'heroicon-o-bell-alert',           'Relance préventive — 30 à 59 jours'],
     ];
 
     public function changerNiveau(?string $niveau): void

@@ -15,16 +15,21 @@
                      'repos' => 'border-gray-300 dark:border-gray-600 hover:border-success-400'],
     ];
 
-    $pastilles = [
-        'tous'   => 'bg-gray-400',
-        'rouge'  => 'bg-danger-500',
-        'orange' => 'bg-warning-500',
-        'verte'  => 'bg-success-500',
+    // Couleur de l'icône quand l'onglet est au repos. Sur fond coloré (onglet
+    // actif), elle passe en blanc pour rester lisible.
+    $teintes = [
+        'tous'   => 'text-gray-500 dark:text-gray-400',
+        'rouge'  => 'text-danger-500',
+        'orange' => 'text-warning-500',
+        'verte'  => 'text-success-500',
     ];
+
+    $icones = ['tous' => 'heroicon-o-queue-list']
+        + collect(\App\Filament\Pages\ProjetsEnAlerte::NIVEAUX)->map(fn ($n) => $n[2])->all();
 
     $onglets = ['tous' => ['Toutes', 'Tous niveaux confondus']]
         + collect(\App\Filament\Pages\ProjetsEnAlerte::NIVEAUX)
-            ->map(fn ($n) => [$n[0], $n[2]])
+            ->map(fn ($n) => [$n[0], $n[3]])
             ->all();
 @endphp
 
@@ -47,9 +52,10 @@
                     $style,
                 ])
             >
-                @unless ($estActif)
-                    <span @class(['size-2.5 rounded-full', $pastilles[$cle]])></span>
-                @endunless
+                <x-filament::icon
+                    :icon="$icones[$cle]"
+                    @class(['size-5', $estActif ? 'text-white' : $teintes[$cle]])
+                />
 
                 <span>{{ $libelle }}</span>
 
