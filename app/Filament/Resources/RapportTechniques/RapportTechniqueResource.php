@@ -19,7 +19,7 @@ use Illuminate\Database\Eloquent\SoftDeletingScope;
 class RapportTechniqueResource extends Resource
 {
     protected static ?string $model = RapportTechnique::class;
-    protected static string | NITENUM | NULL $NAVIGATIONGROUP = 'Évaluation';
+    protected static \UnitEnum | string | null $navigationGroup = 'Évaluation';
     protected static bool $shouldRegisterNavigation = false;
     protected static ?string $modelLabel = 'Rapport technique';
     protected static ?string $pluralModelLabel = 'Rapports techniques';

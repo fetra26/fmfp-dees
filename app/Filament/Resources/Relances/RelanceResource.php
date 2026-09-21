@@ -19,8 +19,8 @@ use Illuminate\Database\Eloquent\SoftDeletingScope;
 class RelanceResource extends Resource
 {
     protected static ?string $model = Relance::class;
-    protected static string | NITENUM | NULL $NAVIGATIONGROUP = 'Suivi';
-    protected static bool $shouldRegisterNavigation = false;
+    protected static \UnitEnum | string | null $navigationGroup = 'Alertes';
+    protected static ?int $navigationSort = 20;
     protected static ?string $modelLabel = 'Relance';
     protected static ?string $pluralModelLabel = 'Relances';
     protected static string|BackedEnum|null $navigationIcon = Heroicon::OutlinedBellAlert;

@@ -19,7 +19,7 @@ use Illuminate\Database\Eloquent\SoftDeletingScope;
 class DanoResource extends Resource
 {
     protected static ?string $model = Dano::class;
-    protected static string | NITENUM | NULL $NAVIGATIONGROUP = 'Cœur métier';
+    protected static \UnitEnum | string | null $navigationGroup = 'Cœur métier';
     protected static bool $shouldRegisterNavigation = false;
     protected static ?string $modelLabel = 'DANO';
     protected static ?string $pluralModelLabel = 'DANOs';

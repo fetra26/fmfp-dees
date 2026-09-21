@@ -19,7 +19,7 @@ use Illuminate\Database\Eloquent\SoftDeletingScope;
 class ConventionResource extends Resource
 {
     protected static ?string $model = Convention::class;
-    protected static string | NITENUM | NULL $NAVIGATIONGROUP = 'Cœur métier';
+    protected static \UnitEnum | string | null $navigationGroup = 'Cœur métier';
     protected static bool $shouldRegisterNavigation = false;
     protected static ?string $modelLabel = 'Convention';
     protected static ?string $pluralModelLabel = 'Conventions';

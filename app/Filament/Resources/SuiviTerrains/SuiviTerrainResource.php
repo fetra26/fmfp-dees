@@ -19,7 +19,7 @@ use Illuminate\Database\Eloquent\SoftDeletingScope;
 class SuiviTerrainResource extends Resource
 {
     protected static ?string $model = SuiviTerrain::class;
-    protected static string | NITENUM | NULL $NAVIGATIONGROUP = 'Suivi';
+    protected static \UnitEnum | string | null $navigationGroup = 'Suivi';
     protected static bool $shouldRegisterNavigation = false;
     protected static ?string $modelLabel = 'Suivi terrain';
     protected static ?string $pluralModelLabel = 'Suivis terrain';

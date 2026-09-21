@@ -19,7 +19,7 @@ use Illuminate\Database\Eloquent\SoftDeletingScope;
 class ReserveResource extends Resource
 {
     protected static ?string $model = Reserve::class;
-    protected static string | NITENUM | NULL $NAVIGATIONGROUP = 'Évaluation';
+    protected static \UnitEnum | string | null $navigationGroup = 'Évaluation';
     protected static bool $shouldRegisterNavigation = false;
     protected static ?string $modelLabel = 'Réserve';
     protected static ?string $pluralModelLabel = 'Réserves';
